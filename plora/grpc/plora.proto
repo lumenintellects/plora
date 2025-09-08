@@ -1,0 +1,18 @@
+syntax = "proto3";
+package plora;
+
+service Plasmid {
+  rpc OfferPlasmid(PlasmidRequest) returns (PlasmidReply);
+}
+
+message PlasmidRequest {
+  string domain = 1;
+}
+
+message PlasmidReply {
+  string status = 1;      // "OK" | "NOT_FOUND" | "ERROR"
+  bytes  bytes  = 2;      // adapter payload
+  string sha    = 3;      // sha256 of bytes
+  string manifest = 4;    // json Manifest
+  bytes  signature = 5;   // RSA signature of bytes
+}

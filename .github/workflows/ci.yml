@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLORA_LATENCY_BUDGET_MS: 250
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install dependencies (CPU wheels)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .[dev]
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Value-add guardrail (smoke)
+        run: |
+          python -m scripts.run_lora_value_add \
+            --domains arithmetic,legal \
+            --ranks 2 \
+            --schemes all \
+            --seeds 41 \
+            --samples 8 \
+            --dev-size 16
