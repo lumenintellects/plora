@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""scripts.run_lora_value_add – orchestrate value-add experiment.
+"""scripts.run_lora_value_add - orchestrate value-add experiment.
 
 This script trains domain-specific LoRA adapters, builds placebo controls, then
 evaluates all cells in-domain and cross-domain.  Heavy lifting is delegated to
