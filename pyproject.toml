@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "plora-swarm"
-version = "0.0.1"
-description = "Prototype v0 of Plasmid LoRA Swarm"
+version = "0.2.0"
+description = "Prototype v2 of Plasmid LoRA Swarm"
 authors = ["Plora Team <team@example.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "plora" }]
+packages = [{ include = "plora" }, { include = "swarm" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"

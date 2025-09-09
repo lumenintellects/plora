@@ -4,6 +4,7 @@ from __future__ import annotations
 """
 
 from typing import List, Tuple, Optional
+import os
 
 import logging
 from datasets import load_dataset
@@ -28,11 +29,21 @@ class RealDatasetLoader:
         cls.SAMPLE_LIMIT = k
 
     @classmethod
-    def _hf_slice(cls, name: str, subset: Optional[str] = None):
-        """Download *train* split with streaming for memory efficiency, deterministically shuffle, hard‑cap to SAMPLE_LIMIT."""
+    def _hf_slice(cls, name: str, subset: Optional[str] = None, *, split: str = "train"):
+        """Download split with streaming, deterministic shuffle, and hard-cap to SAMPLE_LIMIT.
+
+        Parameters
+        ----------
+        name : str
+            HF dataset name.
+        subset : str | None
+            HF dataset subset/config name when applicable.
+        split : str
+            Which split to load (e.g., "train", "validation", "test"). Defaults to "train".
+        """
         try:
             # Use streaming for large datasets to avoid loading everything into RAM
-            ds = load_dataset(name, subset, split="train", streaming=True)
+            ds = load_dataset(name, subset, split=split, streaming=True)
             ds = ds.shuffle(buffer_size=10_000, seed=SEED)  # Use buffer for streaming shuffle
 
             # Convert to list with sample limit
@@ -47,18 +58,18 @@ class RealDatasetLoader:
             return HFDataset.from_list(data) if data else None
 
         except Exception as e:
-            raise RuntimeError(f"Failed to load HF dataset {name}: {e}")
+            raise RuntimeError(f"Failed to load HF dataset {name} split={split}: {e}")
 
     @classmethod
-    def load_arithmetic_data(cls):
-        ds = cls._hf_slice("gsm8k", "main")
+    def load_arithmetic_data(cls, *, split: str = "train"):
+        ds = cls._hf_slice("gsm8k", "main", split=split)
         if ds is None:
             raise RuntimeError("Arithmetic dataset unavailable; aborting experiment.")
         return [(ex["question"], ex["answer"].split("####")[-1].strip()) for ex in ds]
 
     @classmethod
-    def load_legal_data(cls):
-        ds = cls._hf_slice("lex_glue", "eurlex")
+    def load_legal_data(cls, *, split: str = "train"):
+        ds = cls._hf_slice("lex_glue", "eurlex", split=split)
         if ds is None:
             raise RuntimeError("Legal dataset unavailable; aborting experiment.")
         qas = []
@@ -70,14 +81,12 @@ class RealDatasetLoader:
         return qas
 
     @classmethod
-    def load_medical_data(cls):
-        ds = cls._hf_slice("pubmed_qa", "pqa_labeled")
+    def load_medical_data(cls, *, split: str = "train"):
+        ds = cls._hf_slice("pubmed_qa", "pqa_labeled", split=split)
         if ds is None:
             raise RuntimeError("Medical dataset unavailable; aborting experiment.")
         return [(ex["question"], ex["final_decision"]) for ex in ds]
 
-
-# Simple (prompt, completion) pairs, enough to compute perplexity.
 
 DOMAIN_LOADERS = {
     "legal": RealDatasetLoader.load_legal_data,
@@ -86,7 +95,7 @@ DOMAIN_LOADERS = {
 }
 
 
-def get_dataset(domain: str, max_samples: int | None = None) -> List[Tuple[str, str]]:
+def get_dataset(domain: str, max_samples: int | None = None, *, split: str | None = None) -> List[Tuple[str, str]]:
     """Return a list of real QA pairs for *domain* using HF datasets.
 
     Parameters
@@ -95,11 +104,19 @@ def get_dataset(domain: str, max_samples: int | None = None) -> List[Tuple[str, 
         One of {legal, arithmetic, medical, coding}.
     max_samples : int | None
         Optional cap; forwarded to RealDatasetLoader.SAMPLE_LIMIT.
+    split : str | None
+        Which split to load (train|validation|test). Defaults to env PLORA_SPLIT or "train".
     """
     try:
         loader_fn = DOMAIN_LOADERS[domain]
     except KeyError:
         raise KeyError(f"Unknown domain '{domain}'") from None
 
-    RealDatasetLoader.set_sample_limit(max_samples)
-    return loader_fn()
+    if max_samples is not None:
+        RealDatasetLoader.set_sample_limit(max_samples)
+    else:
+        env_cap = os.getenv("PLORA_SAMPLES")
+        RealDatasetLoader.set_sample_limit(int(env_cap) if env_cap else None)
+
+    eff_split = split or os.getenv("PLORA_SPLIT", "train")
+    return loader_fn(split=eff_split)

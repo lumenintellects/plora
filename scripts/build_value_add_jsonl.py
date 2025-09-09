@@ -1,5 +1,16 @@
 #!/usr/bin/env python
-"""Build value_add.jsonl from scratch by evaluating artifacts (memory-safe)."""
+"""Build value_add.jsonl from scratch by evaluating artifacts (memory-safe).
+
+Optimisations to avoid high RAM/VRAM usage:
+- Reuse a single baseline model + tokenizer per base model group (no reload per config).
+- Avoid inject(), which clones the entire state dict; instead, load a temporary
+  base model and wrap with PeftModel for each adapter (trained/placebos), then
+  delete and empty cache immediately after use.
+- Cap tokenization length with --max-length to bound per-example memory/time.
+- Cache baseline per-domain NLLs for each base model to avoid recomputation, with optional on-disk cache.
+- Optional skips: --skip-placebos, --skip-cross for faster, lower-resource runs.
+- Write JSONL incrementally after each record so progress is never lost.
+"""
 from __future__ import annotations
 
 import argparse

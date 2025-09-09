@@ -12,7 +12,7 @@ import base64
 from typing import Union
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import padding, rsa, ed25519
 from cryptography.hazmat.backends import default_backend
 
 
@@ -68,11 +68,21 @@ def _load_public(path: Path):
 def sign_sha256_hex(private_key_path: Path, sha256_hex: str, passphrase: str | None = None) -> str:
     """Return Base64-encoded RSA-PSS signature over *sha256_hex* string."""
     priv = _load_private(private_key_path, passphrase=passphrase)
-    signature = priv.sign(
-        sha256_hex.encode(),
-        padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-        hashes.SHA256(),
-    )
+    try:
+        # Try RSA first
+        signature = priv.sign(
+            sha256_hex.encode(),
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256(),
+        )
+    except Exception:
+        # Fallback for ed25519 private keys
+        ed = ed25519.Ed25519PrivateKey.from_private_bytes(priv.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+        signature = ed.sign(sha256_hex.encode())
     return base64.b64encode(signature).decode()
 
 
@@ -80,6 +90,7 @@ def verify_sha256_hex(public_key_path: Path, sha256_hex: str, signature_b64: str
     """Verify a Base64 signature.  Returns **True** if valid, **False** otherwise."""
     pub = _load_public(public_key_path)
     try:
+        # Try RSA-PSS first
         pub.verify(
             base64.b64decode(signature_b64),
             sha256_hex.encode(),
@@ -88,4 +99,13 @@ def verify_sha256_hex(public_key_path: Path, sha256_hex: str, signature_b64: str
         )
         return True
     except Exception:
-        return False
+        # Try Ed25519
+        try:
+            ed = ed25519.Ed25519PublicKey.from_public_bytes(pub.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            ))
+            ed.verify(base64.b64decode(signature_b64), sha256_hex.encode())
+            return True
+        except Exception:
+            return False

@@ -30,8 +30,8 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
         with inject(base_model, Path("adapter_dir")) as peft:
             out = peft.generate(**inputs)
     """
-    # Cache pristine weights so we can restore quickly afterwards
-    pristine_state = {k: v.clone() for k, v in model.state_dict().items()}
+    # Cache pristine weights on CPU to reduce device memory pressure
+    pristine_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
     t0 = time.perf_counter()
     peft_model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
@@ -100,7 +100,7 @@ def merge_plasmids(
     return model
 
 # ---------------------------------------------------------------------------
-# Placebo LoRA generator – random weights (for control experiments)
+# Placebo LoRA generator, random weights (for control experiments)
 # ---------------------------------------------------------------------------
 
 

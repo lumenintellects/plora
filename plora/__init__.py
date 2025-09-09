@@ -7,6 +7,6 @@ __all__ = [
     "signer",
     "loader",
     "metrics",
-    "dataset_loader",
+    "datasets",
     "compat",
 ]

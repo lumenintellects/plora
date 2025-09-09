@@ -8,26 +8,29 @@ import torch.nn as nn
 from transformers.pytorch_utils import Conv1D
 
 
+# Export common suffix lists for policy whitelists
+ATTENTION_SUFFIXES = ["q_proj", "k_proj", "v_proj", "o_proj", "c_attn", "c_proj"]
+MLP_SUFFIXES = [
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+    "c_fc",
+    "c_proj",
+    "fc_in",
+    "fc_out",
+]
+ALL_SUFFIXES = sorted(set(ATTENTION_SUFFIXES + MLP_SUFFIXES))
+
+
 def select_target_modules(model: nn.Module, scheme: str) -> List[str]:
     scheme = scheme.lower()
     if scheme not in {"attention", "mlp", "all"}:
         raise ValueError("scheme must be one of attention|mlp|all")
 
-    attn_suffixes = ["q_proj", "k_proj", "v_proj", "o_proj", "c_attn", "c_proj"]
-    mlp_suffixes = [
-        "gate_proj",
-        "up_proj",
-        "down_proj",
-        "c_fc",
-        "c_proj",
-        "fc_in",
-        "fc_out",
-    ]
-
     wanted = {
-        "attention": attn_suffixes,
-        "mlp": mlp_suffixes,
-        "all": attn_suffixes + mlp_suffixes,
+        "attention": ATTENTION_SUFFIXES,
+        "mlp": MLP_SUFFIXES,
+        "all": ATTENTION_SUFFIXES + MLP_SUFFIXES,
     }[scheme]
 
     found: Set[str] = set()
