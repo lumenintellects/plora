@@ -9,6 +9,7 @@ Implements:
 All functions are pure and rely only on built-in modules.  They accept the
 minimal state representation - a mapping agent_id -> set[str] of domains held.
 """
+
 from __future__ import annotations
 
 import math

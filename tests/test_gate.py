@@ -28,8 +28,20 @@ def _mk_manifest(domain: str, sha: str, r: int, targets):
             "sha256": sha,
             "size_bytes": 1,
         },
-        train_meta={"seed": 0, "epochs": 0, "dataset_id": "none", "sample_count": 0, "timestamp_unix": 0},
-        metrics={"val_ppl_before": 0.0, "val_ppl_after": 0.0, "delta_ppl": 0.0, "val_em": None, "val_chrf": None},
+        train_meta={
+            "seed": 0,
+            "epochs": 0,
+            "dataset_id": "none",
+            "sample_count": 0,
+            "timestamp_unix": 0,
+        },
+        metrics={
+            "val_ppl_before": 0.0,
+            "val_ppl_after": 0.0,
+            "delta_ppl": 0.0,
+            "val_em": None,
+            "val_chrf": None,
+        },
         safety={"licence": "CC0", "poisoning_score": 0.0},
         signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
         compatibility={"peft_min": "0", "transformers": "0"},
@@ -42,18 +54,20 @@ def test_policy_checks_rank_and_targets(tmp_path: Path):
     sha = hashlib.sha256((d / "adapter_model.safetensors").read_bytes()).hexdigest()
     man = _mk_manifest(dom, sha, r=4, targets=["q_proj", "k_proj"])
 
-    pol = Policy(base_model="dummy/base", allowed_ranks=(4, 8, 16), allowed_targets=["q_proj", "k_proj", "v_proj"]) 
+    pol = Policy(
+        base_model="dummy/base",
+        allowed_ranks=(4, 8, 16),
+        allowed_targets=["q_proj", "k_proj", "v_proj"],
+    )
     ok, reasons = policy_check(d, man, pol)
     assert ok
 
     # Bad rank
-    man_bad_rank = _mk_manifest(dom, sha, r=3, targets=["q_proj"]) 
+    man_bad_rank = _mk_manifest(dom, sha, r=3, targets=["q_proj"])
     ok2, reasons2 = policy_check(d, man_bad_rank, pol)
     assert not ok2 and "rank_not_allowed" in reasons2
 
     # Bad target
-    man_bad_t = _mk_manifest(dom, sha, r=4, targets=["weird_proj"]) 
+    man_bad_t = _mk_manifest(dom, sha, r=4, targets=["weird_proj"])
     ok3, reasons3 = policy_check(d, man_bad_t, pol)
     assert not ok3 and "targets_not_allowed" in reasons3
-
-

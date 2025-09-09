@@ -4,6 +4,7 @@ This module purposefully avoids heavy dependencies (no torch, transformers) so
 that importing it in a plain Python process is cheap.  It focuses on copying
 and verifying LoRA adapter artefacts described by *plora.yml* manifests.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -150,7 +151,9 @@ class Agent:
             return False
 
         # Security gate (policy-only for now) – must pass even if artefact SHA is known
-        gate = alignment_gate(adapter.path.parent, adapter.manifest, self.security_policy)
+        gate = alignment_gate(
+            adapter.path.parent, adapter.manifest, self.security_policy
+        )
         if not gate.passed:
             self.rejected_safety += 1
             if (adapter.manifest.safety.poisoning_score or 0.0) > 0.0:
@@ -196,7 +199,11 @@ class Agent:
             recv_domdir.mkdir(parents=True, exist_ok=True)
             # copy artefact + plora.yml + config
             src_dir = adapter.path.parent
-            for fname in [adapter.manifest.artifacts.filename, "adapter_config.json", "plora.yml"]:
+            for fname in [
+                adapter.manifest.artifacts.filename,
+                "adapter_config.json",
+                "plora.yml",
+            ]:
                 src = src_dir / fname
                 dst = recv_domdir / fname
                 if src.exists():

@@ -1,5 +1,3 @@
-
-
 import asyncio
 import hashlib
 import tempfile
@@ -98,8 +96,12 @@ def test_swarm_smoke_diffusion():
         for i in range(N):
             agent_root = tmp_root / f"agent_{i}"
             adapter = _make_dummy_adapter(domains[i], agent_root)
-            agent = Agent(agent_id=i, domain=domains[i], adapter=adapter, root_dir=agent_root)
-            node = GossipNode(agent=agent, agent_id=i, neighbours=topology[i], mode="sim")
+            agent = Agent(
+                agent_id=i, domain=domains[i], adapter=adapter, root_dir=agent_root
+            )
+            node = GossipNode(
+                agent=agent, agent_id=i, neighbours=topology[i], mode="sim"
+            )
             nodes.append(node)
 
         engine = GraphEngine(

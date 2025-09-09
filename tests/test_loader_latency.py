@@ -18,7 +18,9 @@ LAT_MS = int(os.getenv("PLORA_LATENCY_BUDGET_MS", "250"))
 def _create_dummy_adapter(tmp_path: Path):
     device, dtype = device_dtype()
     base_model = "sshleifer/tiny-gpt2"
-    model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=dtype, device_map={"": device})
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model, torch_dtype=dtype, device_map={"": device}
+    )
     cfg = LoraConfig(r=1, lora_alpha=1, target_modules=["c_attn"], lora_dropout=0.0)
     model = get_peft_model(model, cfg)
     model.save_pretrained(tmp_path, safe_serialization=True)

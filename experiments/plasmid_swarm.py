@@ -95,7 +95,10 @@ def _compat_training_args(**kwargs):
     cleaned = {}
     for k, v in kwargs.items():
         # Handle the evaluation_strategy parameter name variations
-        if k == "evaluation_strategy" and k not in signature(TrainingArguments.__init__).parameters:
+        if (
+            k == "evaluation_strategy"
+            and k not in signature(TrainingArguments.__init__).parameters
+        ):
             # Try alternative parameter names
             if "eval_strategy" in signature(TrainingArguments.__init__).parameters:
                 cleaned["eval_strategy"] = v
@@ -104,6 +107,7 @@ def _compat_training_args(**kwargs):
         elif k in signature(TrainingArguments.__init__).parameters:
             cleaned[k] = v
     return TrainingArguments(**cleaned)
+
 
 # constants
 BASE_MODEL: str = "google/gemma-3-1b-it"
@@ -152,6 +156,7 @@ def training_context(
             elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
             import gc
+
             gc.collect()
         return
 
@@ -218,7 +223,7 @@ DOMAINS = [
     "arithmetic",  # GSM8K
     "legal",  # EUR‑Lex
     "medical",  # PubMedQA
-    "coding",   # CodeSearchNet
+    "coding",  # CodeSearchNet
     "science",  # SciQ
     "history",  # ChroniclingAmericaQA
     "geography",  # GeoQuestions1089
@@ -246,7 +251,9 @@ class RealDatasetLoader:
         try:
             # Use streaming for large datasets to avoid loading everything into RAM
             ds = load_dataset(name, subset, split="train", streaming=True)
-            ds = ds.shuffle(buffer_size=10_000, seed=SEED)  # Use buffer for streaming shuffle
+            ds = ds.shuffle(
+                buffer_size=10_000, seed=SEED
+            )  # Use buffer for streaming shuffle
 
             # Convert to list with sample limit
             data = []
@@ -257,6 +264,7 @@ class RealDatasetLoader:
 
             # Convert back to dataset for consistency
             from datasets import Dataset as HFDataset
+
             return HFDataset.from_list(data) if data else None
 
         except Exception as e:
@@ -311,7 +319,9 @@ class RealDatasetLoader:
             )
             data = []
             for ex in ds:
-                code = ex.get("text") or ex.get("data", {}).get("text") or ex.get("code")
+                code = (
+                    ex.get("text") or ex.get("data", {}).get("text") or ex.get("code")
+                )
                 if not code:
                     continue
                 snippet = code[:120].replace("\n", " ")
@@ -326,9 +336,7 @@ class RealDatasetLoader:
             return data
         except Exception as e:
             logger.warning("CodeSearchNet load failed: %s", e)
-            return [
-                ("How do you create a list in Python?", "my_list = []")
-            ] * 200
+            return [("How do you create a list in Python?", "my_list = []")] * 200
 
     @classmethod
     def load_science_data(cls):
@@ -666,7 +674,9 @@ def _find_latest_checkpoint(output_dir: Path) -> Optional[Path]:
     if all((latest_checkpoint / f).exists() for f in required_files):
         return latest_checkpoint
     else:
-        logger.warning("Latest checkpoint %s is incomplete, skipping", latest_checkpoint.name)
+        logger.warning(
+            "Latest checkpoint %s is incomplete, skipping", latest_checkpoint.name
+        )
         return None
 
 
@@ -707,8 +717,10 @@ def train_agent(agent_dir: Path, domain: str, exp, epochs=1):
         # Log trainable parameters
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in model.parameters())
-        logger.info(f"Trainable parameters: {trainable_params:,} / {total_params:,} "
-                   f"({100 * trainable_params / total_params:.2f}%)")
+        logger.info(
+            f"Trainable parameters: {trainable_params:,} / {total_params:,} "
+            f"({100 * trainable_params / total_params:.2f}%)"
+        )
 
         # Use dynamic padding for better memory efficiency
         train_ds = QADataset(train_data, tok)  # Reduced from 512 to 256
@@ -725,20 +737,28 @@ def train_agent(agent_dir: Path, domain: str, exp, epochs=1):
             logger.info("Resuming training from checkpoint: %s", resume_checkpoint.name)
 
         # Calculate steps per epoch for proper eval/save frequency
-        effective_batch_size = 12 * 4  # per_device_batch_size * gradient_accumulation_steps
+        effective_batch_size = (
+            12 * 4
+        )  # per_device_batch_size * gradient_accumulation_steps
         steps_per_epoch = len(train_data) // effective_batch_size
         total_steps = steps_per_epoch * epochs
 
         # Adjust eval/save steps to be within epoch boundaries to ensure evaluation happens
-        eval_save_steps = min(500, max(50, steps_per_epoch // 4)) if steps_per_epoch >= 200 else max(10, steps_per_epoch // 2)
+        eval_save_steps = (
+            min(500, max(50, steps_per_epoch // 4))
+            if steps_per_epoch >= 200
+            else max(10, steps_per_epoch // 2)
+        )
 
-        logger.info(f"Training plan: {steps_per_epoch} steps/epoch × {epochs} epochs = {total_steps} total steps")
+        logger.info(
+            f"Training plan: {steps_per_epoch} steps/epoch × {epochs} epochs = {total_steps} total steps"
+        )
         logger.info(f"Eval/save frequency: every {eval_save_steps} steps")
 
         tr_args = _compat_training_args(
             output_dir=str(output_dir),
             per_device_train_batch_size=12,  # Increased from 4 to 12
-            gradient_accumulation_steps=4,   # Reduced from 8 to 4 (total effective batch size stays 48)
+            gradient_accumulation_steps=4,  # Reduced from 8 to 4 (total effective batch size stays 48)
             learning_rate=2e-4,
             num_train_epochs=epochs,
             warmup_steps=100,
@@ -785,12 +805,16 @@ def train_agent(agent_dir: Path, domain: str, exp, epochs=1):
             trainer.train()
 
         ttime = time.time() - start
-        logger.info(f"Training completed in {ttime:.1f} seconds ({ttime/3600:.2f} hours)")
+        logger.info(
+            f"Training completed in {ttime:.1f} seconds ({ttime / 3600:.2f} hours)"
+        )
 
         logger.info("Evaluating trained model...")
         trained_em, trained_f1 = evaluate_model(model, tok, eval_data, seed=exp.seed)
         logger.info(f"Final scores - EM: {trained_em:.3f}, F1: {trained_f1:.3f}")
-        logger.info(f"Improvement - EM: {trained_em-base_em:+.3f}, F1: {trained_f1-base_f1:+.3f}")
+        logger.info(
+            f"Improvement - EM: {trained_em - base_em:+.3f}, F1: {trained_f1 - base_f1:+.3f}"
+        )
 
         logger.info("Saving model...")
         agent_dir.mkdir(parents=True, exist_ok=True)
@@ -798,6 +822,7 @@ def train_agent(agent_dir: Path, domain: str, exp, epochs=1):
 
     # Clean up immediately after training
     import gc
+
     gc.collect()
     if torch.backends.mps.is_available():
         torch.mps.empty_cache()
@@ -811,7 +836,9 @@ def train_agent(agent_dir: Path, domain: str, exp, epochs=1):
             shutil.rmtree(output_dir)
             logger.info("Cleaned up temporary training directory: %s", output_dir)
         except OSError as e:
-            logger.warning("Failed to clean up temporary directory %s: %s", output_dir, e)
+            logger.warning(
+                "Failed to clean up temporary directory %s: %s", output_dir, e
+            )
 
     ad_path = next(p for p in agent_dir.iterdir() if p.name.startswith("adapter_model"))
     sha = hashlib.sha256(ad_path.read_bytes()).hexdigest()
@@ -884,12 +911,15 @@ def train_monolithic(output_dir: Path, exp, epochs=1):
         tmp_output_dir = output_dir / "tmp"
         resume_checkpoint = _find_latest_checkpoint(tmp_output_dir)
         if resume_checkpoint:
-            logger.info("Resuming monolithic training from checkpoint: %s", resume_checkpoint.name)
+            logger.info(
+                "Resuming monolithic training from checkpoint: %s",
+                resume_checkpoint.name,
+            )
 
         tr_args = _compat_training_args(
             output_dir=str(tmp_output_dir),
             per_device_train_batch_size=12,  # Increased batch size
-            gradient_accumulation_steps=4,   # Reduced grad accumulation
+            gradient_accumulation_steps=4,  # Reduced grad accumulation
             learning_rate=2e-4,
             num_train_epochs=epochs,
             warmup_steps=100,
@@ -932,19 +962,29 @@ def train_monolithic(output_dir: Path, exp, epochs=1):
     if tmp_output_dir.exists():
         try:
             shutil.rmtree(tmp_output_dir)
-            logger.info("Cleaned up monolithic temporary training directory: %s", tmp_output_dir)
+            logger.info(
+                "Cleaned up monolithic temporary training directory: %s", tmp_output_dir
+            )
         except OSError as e:
-            logger.warning("Failed to clean up monolithic temporary directory %s: %s", tmp_output_dir, e)
+            logger.warning(
+                "Failed to clean up monolithic temporary directory %s: %s",
+                tmp_output_dir,
+                e,
+            )
 
     # Clean up immediately after training
     import gc
+
     gc.collect()
     if torch.backends.mps.is_available():
         torch.mps.empty_cache()
     elif torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    logger.info("Monolithic scores: %s", {k: (round(em, 3), round(f1, 3)) for k, (em, f1) in scores.items()})
+    logger.info(
+        "Monolithic scores: %s",
+        {k: (round(em, 3), round(f1, 3)) for k, (em, f1) in scores.items()},
+    )
     (output_dir / "scores.json").write_text(json.dumps(scores, indent=2))
     return scores
 
@@ -1099,21 +1139,28 @@ class Agent:
                     await asyncio.to_thread(shutil.copy, src_file, dst_file)
                 else:
                     # manifest is not always in the same dir for received adapters
-                    if filename == 'manifest.json':
+                    if filename == "manifest.json":
                         try:
                             # The manifest for a received adapter is in its parent's parent
                             manifest_path = src_dir.parent / "manifest.json"
                             if manifest_path.exists():
-                                await asyncio.to_thread(shutil.copy, manifest_path, dst_file)
-                            else: # check one level higher
+                                await asyncio.to_thread(
+                                    shutil.copy, manifest_path, dst_file
+                                )
+                            else:  # check one level higher
                                 manifest_path = src_dir.parent.parent / "manifest.json"
                                 if manifest_path.exists():
-                                    await asyncio.to_thread(shutil.copy, manifest_path, dst_file)
+                                    await asyncio.to_thread(
+                                        shutil.copy, manifest_path, dst_file
+                                    )
                         except Exception:
-                             logger.warning("Could not find or copy manifest for %s", dom)
+                            logger.warning(
+                                "Could not find or copy manifest for %s", dom
+                            )
                     else:
-                        logger.warning("File %s not found in %s, skipping copy.", filename, src_dir)
-
+                        logger.warning(
+                            "File %s not found in %s, skipping copy.", filename, src_dir
+                        )
 
         # bookkeeping (pure Python, no I/O)
         self.accepted += 1
@@ -1225,7 +1272,9 @@ def eval_with_adapter(
     peft_model.to(model.device)
 
     # Evaluate the performance of the adapted model
-    em, f1 = evaluate_model(peft_model, exp.tokenizer, exp.real_data[domain], seed=exp.seed)
+    em, f1 = evaluate_model(
+        peft_model, exp.tokenizer, exp.real_data[domain], seed=exp.seed
+    )
 
     del fresh_model, peft_model
     return em, f1
@@ -1240,7 +1289,9 @@ def evaluate_swarm(agents: List[Agent], exp: Experiment):
     results = {}
 
     for agent in agents:
-        logger.info("Evaluating Agent %d (specialist in %s)", agent.agent_id, agent.domain)
+        logger.info(
+            "Evaluating Agent %d (specialist in %s)", agent.agent_id, agent.domain
+        )
         agent_scores = {}
 
         # Build a map of all adapters the agent has, both original and received
@@ -1294,7 +1345,11 @@ def generate_report(
         if scores:
             post_em[d] = np.mean(scores)
 
-    improvement_f1 = {d: round(post_f1[d] - base[d][1], 3) for d in exp.domains if d in post_f1 and d in base}
+    improvement_f1 = {
+        d: round(post_f1[d] - base[d][1], 3)
+        for d in exp.domains
+        if d in post_f1 and d in base
+    }
     report = {
         "meta": {
             "agents": len(agents),

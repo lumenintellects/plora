@@ -14,10 +14,16 @@ async def _main_async(host: str, port: int, root: str, key: str | None):
 
 def main():
     parser = argparse.ArgumentParser(description="Launch Plasmid gRPC offer server.")
-    parser.add_argument("--root", default="plasmids", help="Root directory containing adapter dirs by domain")
+    parser.add_argument(
+        "--root",
+        default="plasmids",
+        help="Root directory containing adapter dirs by domain",
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=50051)
-    parser.add_argument("--private-key", help="Optional RSA private key to sign payloads")
+    parser.add_argument(
+        "--private-key", help="Optional RSA private key to sign payloads"
+    )
     args = parser.parse_args()
 
     setup_logging()

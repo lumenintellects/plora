@@ -35,7 +35,9 @@ async def fetch_plasmid(
     dest_dir.mkdir(parents=True, exist_ok=True)
     async with grpc.aio.insecure_channel(f"{host}:{port}") as channel:
         stub = plora_pb2_grpc.PlasmidStub(channel)
-        resp: plora_pb2.PlasmidReply = await stub.OfferPlasmid(plora_pb2.PlasmidRequest(domain=domain))
+        resp: plora_pb2.PlasmidReply = await stub.OfferPlasmid(
+            plora_pb2.PlasmidRequest(domain=domain)
+        )
 
     if resp.status != "OK":
         raise RuntimeError(f"Server returned status {resp.status}")

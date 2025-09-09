@@ -29,7 +29,9 @@ class RealDatasetLoader:
         cls.SAMPLE_LIMIT = k
 
     @classmethod
-    def _hf_slice(cls, name: str, subset: Optional[str] = None, *, split: str = "train"):
+    def _hf_slice(
+        cls, name: str, subset: Optional[str] = None, *, split: str = "train"
+    ):
         """Download split with streaming, deterministic shuffle, and hard-cap to SAMPLE_LIMIT.
 
         Parameters
@@ -44,7 +46,9 @@ class RealDatasetLoader:
         try:
             # Use streaming for large datasets to avoid loading everything into RAM
             ds = load_dataset(name, subset, split=split, streaming=True)
-            ds = ds.shuffle(buffer_size=10_000, seed=SEED)  # Use buffer for streaming shuffle
+            ds = ds.shuffle(
+                buffer_size=10_000, seed=SEED
+            )  # Use buffer for streaming shuffle
 
             # Convert to list with sample limit
             data = []
@@ -55,6 +59,7 @@ class RealDatasetLoader:
 
             # Convert back to dataset for consistency
             from datasets import Dataset as HFDataset
+
             return HFDataset.from_list(data) if data else None
 
         except Exception as e:
@@ -95,7 +100,9 @@ DOMAIN_LOADERS = {
 }
 
 
-def get_dataset(domain: str, max_samples: int | None = None, *, split: str | None = None) -> List[Tuple[str, str]]:
+def get_dataset(
+    domain: str, max_samples: int | None = None, *, split: str | None = None
+) -> List[Tuple[str, str]]:
     """Return a list of real QA pairs for *domain* using HF datasets.
 
     Parameters

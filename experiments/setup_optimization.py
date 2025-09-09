@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+
 def setup_environment():
     """Configure environment variables for optimal Apple Silicon performance."""
 
@@ -34,15 +35,17 @@ def setup_environment():
 
     print(f"✓ Environment settings saved to {env_file}")
 
+
 def check_torch_version():
     """Check PyTorch version and MPS availability."""
     try:
         import torch
+
         print(f"✓ PyTorch version: {torch.__version__}")
 
         if torch.backends.mps.is_available():
             print("✓ MPS (Apple Silicon GPU) available")
-            if hasattr(torch, 'compile'):
+            if hasattr(torch, "compile"):
                 print("✓ torch.compile available for 15-25% speedup")
             else:
                 print("⚠ torch.compile not available - consider updating PyTorch")
@@ -55,6 +58,7 @@ def check_torch_version():
 
     return True
 
+
 def check_dependencies():
     """Check for required dependencies and suggest optimizations."""
     required = [
@@ -64,7 +68,7 @@ def check_dependencies():
         "datasets",
         "sacrebleu",
         "numpy",
-        "pydantic"
+        "pydantic",
     ]
 
     missing = []
@@ -83,6 +87,7 @@ def check_dependencies():
     # Check for optional performance packages
     try:
         import bitsandbytes
+
         print("✓ bitsandbytes available for 8-bit optimization")
     except ImportError:
         print("ℹ Optional: install bitsandbytes for 8-bit Adam optimizer")
@@ -90,11 +95,12 @@ def check_dependencies():
 
     return True
 
+
 def show_recommendations():
     """Show performance recommendations."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PERFORMANCE OPTIMIZATION SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     print("\n🔧 Key Optimizations Applied:")
     print("  • Cached backbone model loading (85% faster agent training)")
@@ -115,6 +121,7 @@ def show_recommendations():
     print("  python plasmid_swarm.py train --n_agents 8 --epochs 1")
     print("  python plasmid_swarm.py full --samples 1000  # For faster testing")
 
+
 def main():
     print("🚀 Setting up plasmid-lora-swarm optimization for Apple Silicon...")
 
@@ -131,6 +138,7 @@ def main():
     print(f"\n✅ Setup complete! Source the environment:")
     print(f"   source .env")
     print(f"   python plasmid_swarm.py train")
+
 
 if __name__ == "__main__":
     main()

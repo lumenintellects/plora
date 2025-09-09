@@ -14,7 +14,9 @@ async def _run(domain: str, dest: Path, host: str, port: int, pubkey: Path | Non
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fetch plasmid by domain via gRPC and verify.")
+    parser = argparse.ArgumentParser(
+        description="Fetch plasmid by domain via gRPC and verify."
+    )
     parser.add_argument("--domain", required=True)
     parser.add_argument("--dest", type=Path, required=True)
     parser.add_argument("--host", default="localhost")

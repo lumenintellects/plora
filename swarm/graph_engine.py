@@ -8,6 +8,7 @@ Responsibilities:
 * Stop when diffusion complete or max_rounds reached.
 * Persist report to JSON.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,9 +29,7 @@ logger = logging.getLogger(__name__)
 def build_topology(kind: str, n: int) -> Dict[int, List[int]]:
     """Return adjacency list mapping node_id -> list(neighbour_ids)."""
     if kind == "line":
-        return {
-            i: [j for j in (i - 1, i + 1) if 0 <= j < n] for i in range(n)
-        }
+        return {i: [j for j in (i - 1, i + 1) if 0 <= j < n] for i in range(n)}
     if kind == "mesh":
         return {i: [j for j in range(n) if j != i] for i in range(n)}
     raise ValueError(f"Unknown topology kind: {kind}")
@@ -77,8 +76,14 @@ class GraphEngine:
                 bytes_total = sum(n.bytes_sent for n in self.nodes)
                 bytes_delta = max(0, bytes_total - prev_bytes)
                 prev_bytes = bytes_total
-                offers_this_round = len(self.nodes) if t > 0 else 0  # v1 tick: one offer per node per round
-                acceptance_rate = (accepted_delta / offers_this_round) if offers_this_round > 0 else 0.0
+                offers_this_round = (
+                    len(self.nodes) if t > 0 else 0
+                )  # v1 tick: one offer per node per round
+                acceptance_rate = (
+                    (accepted_delta / offers_this_round)
+                    if offers_this_round > 0
+                    else 0.0
+                )
                 self.round_logs.append(
                     {
                         "t": t,
@@ -87,12 +92,24 @@ class GraphEngine:
                         "I": I_t,
                         # acceptance/rejection cumulative counters (from Agents)
                         "accepted_total": sum(n.agent.accepted for n in self.nodes),
-                        "accepted_clean_total": sum(getattr(n.agent, "accepted_clean", 0) for n in self.nodes),
-                        "accepted_trojan_total": sum(getattr(n.agent, "accepted_trojan", 0) for n in self.nodes),
-                        "rejected_hash_total": sum(n.agent.rejected_hash for n in self.nodes),
-                        "rejected_safety_total": sum(n.agent.rejected_safety for n in self.nodes),
-                        "rejected_clean_total": sum(getattr(n.agent, "rejected_clean", 0) for n in self.nodes),
-                        "rejected_trojan_total": sum(getattr(n.agent, "rejected_trojan", 0) for n in self.nodes),
+                        "accepted_clean_total": sum(
+                            getattr(n.agent, "accepted_clean", 0) for n in self.nodes
+                        ),
+                        "accepted_trojan_total": sum(
+                            getattr(n.agent, "accepted_trojan", 0) for n in self.nodes
+                        ),
+                        "rejected_hash_total": sum(
+                            n.agent.rejected_hash for n in self.nodes
+                        ),
+                        "rejected_safety_total": sum(
+                            n.agent.rejected_safety for n in self.nodes
+                        ),
+                        "rejected_clean_total": sum(
+                            getattr(n.agent, "rejected_clean", 0) for n in self.nodes
+                        ),
+                        "rejected_trojan_total": sum(
+                            getattr(n.agent, "rejected_trojan", 0) for n in self.nodes
+                        ),
                         # per-round deltas
                         "accepted_delta": accepted_delta,
                         "bytes_sent_delta": bytes_delta,
@@ -139,22 +156,41 @@ class GraphEngine:
                 "bytes_on_wire": bytes_on_wire,
                 "accepted_offers": accepted,
                 "gate": {
-                    "rejected_hash_total": sum(n.agent.rejected_hash for n in self.nodes),
-                    "rejected_safety_total": sum(n.agent.rejected_safety for n in self.nodes),
-                    "accepted_clean_total": sum(getattr(n.agent, "accepted_clean", 0) for n in self.nodes),
-                    "accepted_trojan_total": sum(getattr(n.agent, "accepted_trojan", 0) for n in self.nodes),
-                    "rejected_clean_total": sum(getattr(n.agent, "rejected_clean", 0) for n in self.nodes),
-                    "rejected_trojan_total": sum(getattr(n.agent, "rejected_trojan", 0) for n in self.nodes),
+                    "rejected_hash_total": sum(
+                        n.agent.rejected_hash for n in self.nodes
+                    ),
+                    "rejected_safety_total": sum(
+                        n.agent.rejected_safety for n in self.nodes
+                    ),
+                    "accepted_clean_total": sum(
+                        getattr(n.agent, "accepted_clean", 0) for n in self.nodes
+                    ),
+                    "accepted_trojan_total": sum(
+                        getattr(n.agent, "accepted_trojan", 0) for n in self.nodes
+                    ),
+                    "rejected_clean_total": sum(
+                        getattr(n.agent, "rejected_clean", 0) for n in self.nodes
+                    ),
+                    "rejected_trojan_total": sum(
+                        getattr(n.agent, "rejected_trojan", 0) for n in self.nodes
+                    ),
                     # FN: trojan accepted; FP: clean rejected
-                    "false_negatives": sum(getattr(n.agent, "accepted_trojan", 0) for n in self.nodes),
-                    "false_positives": sum(getattr(n.agent, "rejected_clean", 0) for n in self.nodes),
+                    "false_negatives": sum(
+                        getattr(n.agent, "accepted_trojan", 0) for n in self.nodes
+                    ),
+                    "false_positives": sum(
+                        getattr(n.agent, "rejected_clean", 0) for n in self.nodes
+                    ),
                     "rejection_reasons": dict(reasons_hist),
                 },
             },
         }
         if self.report_dir is not None:
             self.report_dir.mkdir(parents=True, exist_ok=True)
-            path = self.report_dir / f"swarm_graph_report_{self.topology_kind}_{self.seed}.json"
+            path = (
+                self.report_dir
+                / f"swarm_graph_report_{self.topology_kind}_{self.seed}.json"
+            )
             path.write_text(json.dumps(report, indent=2))
             logger.info("Saved report to %s", path)
             return path

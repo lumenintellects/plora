@@ -13,13 +13,30 @@ from plora.targets import ATTENTION_SUFFIXES
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Dump effective security policy")
-    p.add_argument("--policy_file", type=Path, default=None, help="Optional JSON policy file to load")
+    p.add_argument(
+        "--policy_file",
+        type=Path,
+        default=None,
+        help="Optional JSON policy file to load",
+    )
     p.add_argument("--base_model", type=str, default=None)
-    p.add_argument("--allowed_targets", type=str, default=None, help="attention|all or omit to keep from file")
+    p.add_argument(
+        "--allowed_targets",
+        type=str,
+        default=None,
+        help="attention|all or omit to keep from file",
+    )
     p.add_argument("--allowed_targets_file", type=Path, default=None)
-    p.add_argument("--allowed_ranks", type=str, default=None, help="Comma-separated ranks e.g. 4,8,16")
+    p.add_argument(
+        "--allowed_ranks",
+        type=str,
+        default=None,
+        help="Comma-separated ranks e.g. 4,8,16",
+    )
     p.add_argument("--signatures", choices=["on", "off"], default=None)
-    p.add_argument("--trusted_pubkeys", type=str, default=None, help="Comma-separated PEM paths")
+    p.add_argument(
+        "--trusted_pubkeys", type=str, default=None, help="Comma-separated PEM paths"
+    )
     p.add_argument("--tau_trigger", type=float, default=None)
     p.add_argument("--tau_norm_z", type=float, default=None)
     p.add_argument("--tau_clean_delta", type=float, default=None)
@@ -40,7 +57,11 @@ def main() -> None:
     # Resolve allowed targets
     targets = None
     if ns.allowed_targets_file is not None and ns.allowed_targets_file.exists():
-        targets = [line.strip() for line in ns.allowed_targets_file.read_text().splitlines() if line.strip()]
+        targets = [
+            line.strip()
+            for line in ns.allowed_targets_file.read_text().splitlines()
+            if line.strip()
+        ]
     elif ns.allowed_targets == "attention":
         targets = ATTENTION_SUFFIXES
     elif ns.allowed_targets == "all":
@@ -52,7 +73,7 @@ def main() -> None:
         pol.allowed_ranks = tuple(int(x) for x in ns.allowed_ranks.split(",") if x)
 
     if ns.signatures is not None:
-        pol.signatures_enabled = (ns.signatures == "on")
+        pol.signatures_enabled = ns.signatures == "on"
 
     if ns.trusted_pubkeys:
         pol.trusted_public_keys = [Path(p) for p in ns.trusted_pubkeys.split(",") if p]
@@ -67,11 +88,17 @@ def main() -> None:
     # Print JSON
     data = {
         "base_model": pol.base_model,
-        "allowed_ranks": list(pol.allowed_ranks) if pol.allowed_ranks is not None else None,
-        "allowed_targets": list(pol.allowed_targets) if pol.allowed_targets is not None else None,
+        "allowed_ranks": list(pol.allowed_ranks)
+        if pol.allowed_ranks is not None
+        else None,
+        "allowed_targets": list(pol.allowed_targets)
+        if pol.allowed_targets is not None
+        else None,
         "max_size_bytes": pol.max_size_bytes,
         "signatures_enabled": pol.signatures_enabled,
-        "trusted_public_keys": [str(p) for p in pol.trusted_public_keys] if pol.trusted_public_keys else None,
+        "trusted_public_keys": [str(p) for p in pol.trusted_public_keys]
+        if pol.trusted_public_keys
+        else None,
         "tau_trigger": pol.tau_trigger,
         "tau_norm_z": pol.tau_norm_z,
         "tau_clean_delta": pol.tau_clean_delta,
@@ -81,5 +108,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

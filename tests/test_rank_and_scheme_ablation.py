@@ -15,4 +15,6 @@ def test_r8_beats_r2():
     p_r2 = paired_wilcoxon(deltas_r2)["p"]
     p_r8 = paired_wilcoxon(deltas_r8)["p"]
 
-    assert p_r8 <= p_r2, "Higher-capacity LoRA should have stronger or equal significance"
+    assert p_r8 <= p_r2, (
+        "Higher-capacity LoRA should have stronger or equal significance"
+    )

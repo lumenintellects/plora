@@ -33,5 +33,3 @@ def test_erdos_renyi_connectivity_and_symmetry():
 
     # our generator enforces connectivity via link-to-previous fallback
     assert _is_connected(adj)
-
-

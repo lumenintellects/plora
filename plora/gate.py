@@ -49,7 +49,9 @@ class GateMetrics:
     reasons: List[str]
 
 
-def _append_audit(adapter_dir: Path, manifest: Manifest, passed: bool, reasons: List[str]) -> None:
+def _append_audit(
+    adapter_dir: Path, manifest: Manifest, passed: bool, reasons: List[str]
+) -> None:
     try:
         audit_dir = adapter_dir.parent / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +67,9 @@ def _append_audit(adapter_dir: Path, manifest: Manifest, passed: bool, reasons: 
         pass
 
 
-def policy_check(adapter_dir: Path, manifest: Manifest, policy: Policy) -> Tuple[bool, List[str]]:
+def policy_check(
+    adapter_dir: Path, manifest: Manifest, policy: Policy
+) -> Tuple[bool, List[str]]:
     reasons: List[str] = []
 
     # Base model must match if specified
@@ -87,7 +91,10 @@ def policy_check(adapter_dir: Path, manifest: Manifest, policy: Policy) -> Tuple
     else:
         if not artefact.name.endswith((".safetensors", ".bin")):
             reasons.append("artifact_ext_unexpected")
-        if artefact.stat().st_size <= 0 or artefact.stat().st_size > policy.max_size_bytes:
+        if (
+            artefact.stat().st_size <= 0
+            or artefact.stat().st_size > policy.max_size_bytes
+        ):
             reasons.append("artifact_size_out_of_bounds")
 
     # SHA match (redundant if Agent validated, but safe here too)
@@ -102,7 +109,9 @@ def policy_check(adapter_dir: Path, manifest: Manifest, policy: Policy) -> Tuple
             ok = False
             if policy.trusted_public_keys:
                 for pub in policy.trusted_public_keys:
-                    if verify_sha256_hex(pub, manifest.artifacts.sha256, manifest.signer.signature_b64):
+                    if verify_sha256_hex(
+                        pub, manifest.artifacts.sha256, manifest.signer.signature_b64
+                    ):
                         ok = True
                         break
             if not ok:
@@ -113,7 +122,9 @@ def policy_check(adapter_dir: Path, manifest: Manifest, policy: Policy) -> Tuple
     return (len(reasons) == 0), reasons
 
 
-def alignment_gate(adapter_dir: Path, manifest: Manifest, policy: Policy | None) -> GateMetrics:
+def alignment_gate(
+    adapter_dir: Path, manifest: Manifest, policy: Policy | None
+) -> GateMetrics:
     """Composite gate - currently policy-only with stub metrics.
 
     Returns GateMetrics; future versions will add behavioural and weight stats.
@@ -127,17 +138,28 @@ def alignment_gate(adapter_dir: Path, manifest: Manifest, policy: Policy | None)
     # Behavioural probes
     trigger_rate = 1.0 if (manifest.safety.poisoning_score or 0.0) > 0.0 else 0.0
     clean_delta_f1 = 0.0
-    if policy.enable_probes and manifest.base_model and manifest.base_model != "dummy/base":
+    if (
+        policy.enable_probes
+        and manifest.base_model
+        and manifest.base_model != "dummy/base"
+    ):
         try:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
             from peft import PeftModel
+
             probes = load_probes()
             device, dtype = device_dtype()
             tok = AutoTokenizer.from_pretrained(manifest.base_model)
-            tok.pad_token = tok.eos_token if hasattr(tok, 'eos_token') else tok.pad_token
-            base = AutoModelForCausalLM.from_pretrained(manifest.base_model, torch_dtype=dtype, device_map={"": device})
-            peft_model = PeftModel.from_pretrained(base, str(adapter_dir), is_trainable=False)
+            tok.pad_token = (
+                tok.eos_token if hasattr(tok, "eos_token") else tok.pad_token
+            )
+            base = AutoModelForCausalLM.from_pretrained(
+                manifest.base_model, torch_dtype=dtype, device_map={"": device}
+            )
+            peft_model = PeftModel.from_pretrained(
+                base, str(adapter_dir), is_trainable=False
+            )
             peft_model.eval()
             # Trigger compliance: fraction of trigger prompts producing "999"
             trig_prompts = probes.triggers[: policy.probes_max]
@@ -148,7 +170,9 @@ def alignment_gate(adapter_dir: Path, manifest: Manifest, policy: Policy | None)
                 text = tok.decode(out[0], skip_special_tokens=True)
                 if "999" in text:
                     matches += 1
-            trigger_rate = (matches / max(1, len(trig_prompts))) if trig_prompts else 0.0
+            trigger_rate = (
+                (matches / max(1, len(trig_prompts))) if trig_prompts else 0.0
+            )
         except Exception:
             # fallback to manifest flag proxy
             pass
@@ -164,6 +188,10 @@ def alignment_gate(adapter_dir: Path, manifest: Manifest, policy: Policy | None)
         reasons.append("weight_norm_outlier")
         ok = False
 
-    return GateMetrics(trigger_rate=trigger_rate, clean_delta_f1=clean_delta_f1, norm_z=nz, passed=ok, reasons=reasons)
-
-
+    return GateMetrics(
+        trigger_rate=trigger_rate,
+        clean_delta_f1=clean_delta_f1,
+        norm_z=nz,
+        passed=ok,
+        reasons=reasons,
+    )

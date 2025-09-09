@@ -32,22 +32,61 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--rounds", type=int, default=5)
     p.add_argument("--graph_p", type=float, default=0.25)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--max_inflight", type=int, default=0, help="Cap concurrent edge talks per round (0=unbounded)")
-    p.add_argument("--report_dir", type=Path, default=Path("results"), help="Directory to write a v2 JSON report")
+    p.add_argument(
+        "--max_inflight",
+        type=int,
+        default=0,
+        help="Cap concurrent edge talks per round (0=unbounded)",
+    )
+    p.add_argument(
+        "--report_dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory to write a v2 JSON report",
+    )
     p.add_argument("--security", choices=["on", "off"], default="off")
-    p.add_argument("--allowed_targets", type=str, default="attention",
-                   help="One of attention|all; whitelist for security policy")
-    p.add_argument("--allowed_targets_file", type=Path, default=None,
-                   help="Optional path to newline-separated allowed target suffixes")
-    p.add_argument("--allowed_ranks", type=str, default="4,8,16",
-                   help="Comma-separated allowed ranks, e.g. 4,8,16")
-    p.add_argument("--trojan_rate", type=float, default=0.0,
-                   help="Fraction [0,1] of agents to mark as trojan at init")
-    p.add_argument("--signatures", choices=["on", "off"], default="off",
-                   help="Enable RSA signature verification in policy")
-    p.add_argument("--trusted_pubkeys", type=str, default="",
-                   help="Comma-separated paths to trusted public key PEM files")
-    p.add_argument("--policy_file", type=Path, default=None, help="Optional JSON policy file to load")
+    p.add_argument(
+        "--allowed_targets",
+        type=str,
+        default="attention",
+        help="One of attention|all; whitelist for security policy",
+    )
+    p.add_argument(
+        "--allowed_targets_file",
+        type=Path,
+        default=None,
+        help="Optional path to newline-separated allowed target suffixes",
+    )
+    p.add_argument(
+        "--allowed_ranks",
+        type=str,
+        default="4,8,16",
+        help="Comma-separated allowed ranks, e.g. 4,8,16",
+    )
+    p.add_argument(
+        "--trojan_rate",
+        type=float,
+        default=0.0,
+        help="Fraction [0,1] of agents to mark as trojan at init",
+    )
+    p.add_argument(
+        "--signatures",
+        choices=["on", "off"],
+        default="off",
+        help="Enable RSA signature verification in policy",
+    )
+    p.add_argument(
+        "--trusted_pubkeys",
+        type=str,
+        default="",
+        help="Comma-separated paths to trusted public key PEM files",
+    )
+    p.add_argument(
+        "--policy_file",
+        type=Path,
+        default=None,
+        help="Optional JSON policy file to load",
+    )
     p.add_argument("--tau_trigger", type=float, default=None)
     p.add_argument("--tau_norm_z", type=float, default=None)
     p.add_argument("--tau_clean_delta", type=float, default=None)
@@ -107,7 +146,11 @@ async def _main_async(ns: argparse.Namespace) -> None:
         targets = None
         if ns.allowed_targets_file is not None:
             if ns.allowed_targets_file.exists():
-                targets = [line.strip() for line in ns.allowed_targets_file.read_text().splitlines() if line.strip()]
+                targets = [
+                    line.strip()
+                    for line in ns.allowed_targets_file.read_text().splitlines()
+                    if line.strip()
+                ]
         elif ns.allowed_targets == "attention":
             targets = ATTENTION_SUFFIXES
         ranks = tuple(int(x) for x in ns.allowed_ranks.split(",") if x)
@@ -139,15 +182,28 @@ async def _main_async(ns: argparse.Namespace) -> None:
         # Probabilistically mark as trojan for evaluation
         if ns.trojan_rate > 0.0 and rng.random() < ns.trojan_rate:
             mark_trojan(adapter.path.parent)
-        ag = Agent(agent_id=i, domain=dom, adapter=adapter, root_dir=agent_root, security_policy=policy)
+        ag = Agent(
+            agent_id=i,
+            domain=dom,
+            adapter=adapter,
+            root_dir=agent_root,
+            security_policy=policy,
+        )
         agents.append(ag)
 
-    await run_gossip(agents, ns.rounds, p=ns.graph_p, seed=ns.seed, max_inflight=(ns.max_inflight or None))
+    await run_gossip(
+        agents,
+        ns.rounds,
+        p=ns.graph_p,
+        seed=ns.seed,
+        max_inflight=(ns.max_inflight or None),
+    )
 
     # Build simple v2 report (unified fields where possible)
     domains = list({ag.domain for ag in agents})
     coverage = {
-        d: sum(1.0 for ag in agents if d in ag.knowledge) / float(len(agents)) for d in domains
+        d: sum(1.0 for ag in agents if d in ag.knowledge) / float(len(agents))
+        for d in domains
     }
     reasons = {}
     for ag in agents:
@@ -167,14 +223,30 @@ async def _main_async(ns: argparse.Namespace) -> None:
             "bytes_on_wire": 0,
             "accepted_offers": sum(getattr(ag, "accepted", 0) for ag in agents),
             "gate": {
-                "rejected_hash_total": sum(getattr(ag, "rejected_hash", 0) for ag in agents),
-                "rejected_safety_total": sum(getattr(ag, "rejected_safety", 0) for ag in agents),
-                "accepted_clean_total": sum(getattr(ag, "accepted_clean", 0) for ag in agents),
-                "accepted_trojan_total": sum(getattr(ag, "accepted_trojan", 0) for ag in agents),
-                "rejected_clean_total": sum(getattr(ag, "rejected_clean", 0) for ag in agents),
-                "rejected_trojan_total": sum(getattr(ag, "rejected_trojan", 0) for ag in agents),
-                "false_negatives": sum(getattr(ag, "accepted_trojan", 0) for ag in agents),
-                "false_positives": sum(getattr(ag, "rejected_clean", 0) for ag in agents),
+                "rejected_hash_total": sum(
+                    getattr(ag, "rejected_hash", 0) for ag in agents
+                ),
+                "rejected_safety_total": sum(
+                    getattr(ag, "rejected_safety", 0) for ag in agents
+                ),
+                "accepted_clean_total": sum(
+                    getattr(ag, "accepted_clean", 0) for ag in agents
+                ),
+                "accepted_trojan_total": sum(
+                    getattr(ag, "accepted_trojan", 0) for ag in agents
+                ),
+                "rejected_clean_total": sum(
+                    getattr(ag, "rejected_clean", 0) for ag in agents
+                ),
+                "rejected_trojan_total": sum(
+                    getattr(ag, "rejected_trojan", 0) for ag in agents
+                ),
+                "false_negatives": sum(
+                    getattr(ag, "accepted_trojan", 0) for ag in agents
+                ),
+                "false_positives": sum(
+                    getattr(ag, "rejected_clean", 0) for ag in agents
+                ),
                 "rejection_reasons": reasons,
             },
         },

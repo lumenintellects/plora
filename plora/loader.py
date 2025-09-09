@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 # Context manager, inject & restore
 # ---------------------------------------------------------------------------
 
+
 @contextlib.contextmanager
 def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
     """Temporarily load a LoRA adapter into *model*.
@@ -31,7 +32,9 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
             out = peft.generate(**inputs)
     """
     # Cache pristine weights on CPU to reduce device memory pressure
-    pristine_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    pristine_state = {
+        k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+    }
 
     t0 = time.perf_counter()
     peft_model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
@@ -57,6 +60,7 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
 # ---------------------------------------------------------------------------
 # Merging
 # ---------------------------------------------------------------------------
+
 
 def merge_plasmids(
     base_model_name: str,
@@ -98,6 +102,7 @@ def merge_plasmids(
         return model
     # Otherwise detach and return plain model
     return model
+
 
 # ---------------------------------------------------------------------------
 # Placebo LoRA generator, random weights (for control experiments)
@@ -159,10 +164,17 @@ def random_lora(
     # Fallback discovery of target modules if still None
     if target_modules is None:
         cand = ["q_proj", "k_proj", "v_proj", "o_proj", "c_attn", "c_proj"]
-        found = {suffix for name, _ in model.named_modules() for suffix in cand if name.endswith(suffix)}
+        found = {
+            suffix
+            for name, _ in model.named_modules()
+            for suffix in cand
+            if name.endswith(suffix)
+        }
         target_modules = sorted(found) if found else ["c_attn"]
 
-    l_cfg = LoraConfig(r=r, lora_alpha=alpha, target_modules=target_modules, lora_dropout=dropout)
+    l_cfg = LoraConfig(
+        r=r, lora_alpha=alpha, target_modules=target_modules, lora_dropout=dropout
+    )
 
     # Create a trainable PEFT wrapper to easily write weights later
     peft_model = get_peft_model(model, l_cfg)

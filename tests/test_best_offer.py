@@ -68,5 +68,3 @@ def test_best_offer_prefers_em_then_chrf_then_delta():
     a.received["d2"] = _ad("d2", em=None, chrf=None, delta=-0.2)
     dom, _ = a.best_offer_for(b)
     assert dom == "d1"  # -0.3 best
-
-

@@ -37,5 +37,3 @@ def load_probes() -> Probes:
     ]
     clean = [(f"q{i}", f"a{i}") for i in range(8)]
     return Probes(triggers=triggers, clean=clean)
-
-

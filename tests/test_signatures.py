@@ -21,5 +21,3 @@ def test_signature_happy_and_sad(tmp_path: Path):
     # corrupt signature
     bad = base64.b64encode(base64.b64decode(sig)[:-1] + b"\x00").decode()
     assert not verify_sha256_hex(pub, sha, bad)
-
-

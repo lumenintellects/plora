@@ -7,6 +7,7 @@ and testability over raw throughput - we expect <10 agents and small payloads.
 Only *sim-only* mode is fully wired for now.  Full-mode staging of real LoRA
 files will come in a later patch once the graph engine is complete.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,9 +56,7 @@ class GossipNode:
         self._srv: asyncio.base_events.Server | None = None
         self._rand = rand or random.Random()
         # peer_id -> set[domain] believed present at peer
-        self.peer_cache: MutableMapping[int, Set[str]] = {
-            n: set() for n in neighbours
-        }
+        self.peer_cache: MutableMapping[int, Set[str]] = {n: set() for n in neighbours}
         # bytes sent & accepted stats (for metrics)
         self.bytes_sent: int = 0
         self.accepted_offers: int = 0
@@ -149,7 +148,9 @@ class GossipNode:
             if status == "accepted":
                 self.peer_cache[peer].add(dom)
         except Exception as exc:
-            logger.debug("Agent %s failed to send offer to %s: %s", self.agent_id, peer, exc)
+            logger.debug(
+                "Agent %s failed to send offer to %s: %s", self.agent_id, peer, exc
+            )
 
     # ------------------------------------------------------------------
     # Helpers

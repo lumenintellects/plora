@@ -13,7 +13,9 @@ from typing import List
 from swarm.graph_v2 import erdos_renyi_graph
 
 
-async def push_pull_round(agents, neighbours: List[List[int]], *, max_inflight: int | None = None):
+async def push_pull_round(
+    agents, neighbours: List[List[int]], *, max_inflight: int | None = None
+):
     sem = asyncio.Semaphore(max_inflight) if max_inflight and max_inflight > 0 else None
 
     async def talk(u: int, v: int):
@@ -34,17 +36,24 @@ async def push_pull_round(agents, neighbours: List[List[int]], *, max_inflight: 
             if sem is None:
                 tasks.append(asyncio.create_task(talk(u, v)))
             else:
+
                 async def guarded(u=u, v=v):
                     async with sem:
                         await talk(u, v)
+
                 tasks.append(asyncio.create_task(guarded()))
     if tasks:
         await asyncio.gather(*tasks)
 
 
-async def run_gossip(agents, rounds: int, *, p: float = 0.25, seed: int = 42, max_inflight: int | None = None):
+async def run_gossip(
+    agents,
+    rounds: int,
+    *,
+    p: float = 0.25,
+    seed: int = 42,
+    max_inflight: int | None = None,
+):
     nbrs = erdos_renyi_graph(len(agents), p=p, seed=seed)
     for _ in range(rounds):
         await push_pull_round(agents, nbrs, max_inflight=max_inflight)
-
-

@@ -18,24 +18,22 @@ Original file is located at
 </details>
 """
 
-
-
 """## 0 – Ground rules & switches
 
 We support quick *dry‑run* execution (≈10 minutes) and full overnight runs.
 Set `DRY_RUN = True` to cap dataset size, reduce epochs, and bypass heavy PDF export.
 """
 
-DRY_RUN = True               # ⇐ flip to False for full experiment
+DRY_RUN = True  # ⇐ flip to False for full experiment
 MAX_SAMPLES = 50 if DRY_RUN else None
 EPOCHS = 1 if DRY_RUN else 3
 BASE_MODEL_NAME = "google/gemma-3-1b-it"
 DOMAINS = [
-    "arithmetic",     # maths QA
-    "translation",    # en→de sentence pairs
-    "sentiment",      # movie review sentiment
-    "medical",        # PubMedQA
-    "programming"     # Python snippet explanation
+    "arithmetic",  # maths QA
+    "translation",  # en→de sentence pairs
+    "sentiment",  # movie review sentiment
+    "medical",  # PubMedQA
+    "programming",  # Python snippet explanation
 ]
 
 """## 1 – Environment bootstrap
@@ -52,20 +50,34 @@ pip install transformers==4.* peft==0.* bitsandbytes accelerate datasets network
 Below we verify versions and the absence of CUDA ‑ we rely on Apple Metal or CPU.
 """
 
-!pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-!pip install transformers==4.* peft==0.* bitsandbytes accelerate datasets networkx scipy numpy pandas matplotlib cryptography scikit-learn tqdm
-
-!pip install -U bitsandbytes
-
-!huggingface-cli login
+# !pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+#
+# !pip install transformers==4.* peft==0.* bitsandbytes accelerate datasets networkx scipy numpy pandas matplotlib cryptography scikit-learn tqdm
+#
+# !pip install -U bitsandbytes
+#
+# !huggingface-cli login
 
 import sys, torch, transformers, peft, bitsandbytes, accelerate, datasets, networkx, platform, json, hashlib, time, math, random, os, warnings
 from pathlib import Path
 
 print("Python", sys.version.split()[0])
-print("PyTorch", torch.__version__, "| CUDA?", torch.cuda.is_available(), "| MPS?", torch.backends.mps.is_available())
-print("Transformers", transformers.__version__, "| PEFT", peft.__version__, "| BitsAndBytes", bitsandbytes.__version__)
+print(
+    "PyTorch",
+    torch.__version__,
+    "| CUDA?",
+    torch.cuda.is_available(),
+    "| MPS?",
+    torch.backends.mps.is_available(),
+)
+print(
+    "Transformers",
+    transformers.__version__,
+    "| PEFT",
+    peft.__version__,
+    "| BitsAndBytes",
+    bitsandbytes.__version__,
+)
 
 """## 2 – Data: five synthetic/real micro‑tasks
 
@@ -74,29 +86,44 @@ We stream or synthesise ≤ 50 examples per domain for the dry‑run.  Validat
 
 from datasets import load_dataset, Dataset
 
+
 def sample_stream(name, subset=None, q="question", a="answer"):
     try:
-        ds = load_dataset(name, subset, split="train", streaming=True).shuffle(buffer_size=10_000, seed=42)
+        ds = load_dataset(name, subset, split="train", streaming=True).shuffle(
+            buffer_size=10_000, seed=42
+        )
         pairs = []
         for i, rec in enumerate(ds):
             if MAX_SAMPLES and i >= MAX_SAMPLES:
                 break
-            qtxt = str(rec.get(q) or rec.get("text") or rec.get("sentence") or list(rec.values())[0])
-            atxt = str(rec.get(a) or rec.get("label") or rec.get("translation", {}).get("de", ""))
+            qtxt = str(
+                rec.get(q)
+                or rec.get("text")
+                or rec.get("sentence")
+                or list(rec.values())[0]
+            )
+            atxt = str(
+                rec.get(a)
+                or rec.get("label")
+                or rec.get("translation", {}).get("de", "")
+            )
             pairs.append((qtxt.strip(), atxt.strip()))
         return pairs
     except Exception as e:
         warnings.warn(f"{name} load failed → fallback: {e}")
         return [(f"Dummy Q{i}", "A") for i in range(MAX_SAMPLES or 20)]
 
+
 DATA = {
     "arithmetic": sample_stream("gsm8k", "main"),
-    "translation": sample_stream("opus_books", "en-de", q="translation", a="translation"),
+    "translation": sample_stream(
+        "opus_books", "en-de", q="translation", a="translation"
+    ),
     "sentiment": sample_stream("rotten_tomatoes", None, q="text", a="label"),
     "medical": sample_stream("pubmed_qa", "pqa_labeled"),
     "programming": sample_stream("code_search_net", "python", q="code", a="code"),
 }
-for dom,pairs in DATA.items():
+for dom, pairs in DATA.items():
     print(dom, len(pairs))
 
 """## 3 – Base model + tokenizer (4‑bit QLoRA where possible)
@@ -106,15 +133,15 @@ We attempt Llama‑2‑7B chat in 4‑bit using **bitsandbytes**; if that exceed
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+
 def get_base():
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL_NAME,
-        torch_dtype=torch.float16,
-        device_map="auto"
+        BASE_MODEL_NAME, torch_dtype=torch.float16, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME)
     print("Loaded Gemma‑1B in FP16")
     return model, tokenizer, BASE_MODEL_NAME
+
 
 BASE_MODEL, TOKENIZER, BASE_NAME = get_base()
 TOKENIZER.pad_token = TOKENIZER.eos_token
@@ -128,51 +155,77 @@ from peft import LoraConfig, get_peft_model
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-AGENT_DIR = Path("plasmids"); AGENT_DIR.mkdir(exist_ok=True)
+AGENT_DIR = Path("plasmids")
+AGENT_DIR.mkdir(exist_ok=True)
 ADAPTERS = {}
+
 
 class SimpleDS(torch.utils.data.Dataset):
     def __init__(self, pairs):
         self.data = pairs
+
     def __len__(self):
         return len(self.data)
+
     def __getitem__(self, idx):
-        q,a = self.data[idx]
+        q, a = self.data[idx]
         text = f"Question: {q}\nAnswer: {a}"
-        enc = TOKENIZER(text, return_tensors="pt", padding="max_length", truncation=True, max_length=128)
-        enc = {k:v.squeeze(0) for k,v in enc.items()}
+        enc = TOKENIZER(
+            text,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=128,
+        )
+        enc = {k: v.squeeze(0) for k, v in enc.items()}
         enc["labels"] = enc["input_ids"].clone()
         return enc
 
+
 def train_one(domain, pairs):
-    split = int(0.8*len(pairs))
+    split = int(0.8 * len(pairs))
     train_ds, val_ds = SimpleDS(pairs[:split]), SimpleDS(pairs[split:])
-    model = AutoModelForCausalLM.from_pretrained(BASE_NAME, device_map="auto", load_in_4bit=getattr(BASE_MODEL,"is_loaded_in_4bit",False))
-    lcfg = LoraConfig(r=8, lora_alpha=16, target_modules=["q_proj","k_proj","v_proj","o_proj"], lora_dropout=0.1)
+    model = AutoModelForCausalLM.from_pretrained(
+        BASE_NAME,
+        device_map="auto",
+        load_in_4bit=getattr(BASE_MODEL, "is_loaded_in_4bit", False),
+    )
+    lcfg = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        lora_dropout=0.1,
+    )
     model = get_peft_model(model, lcfg)
     optim = torch.optim.AdamW(model.parameters(), lr=2e-4)
     loader = DataLoader(train_ds, batch_size=4, shuffle=True)
     model.train()
     for epoch in range(EPOCHS):
-        for batch in tqdm(loader, desc=f"{domain} epoch{epoch+1}"):
-            batch = {k:v.to(model.device) for k,v in batch.items()}
+        for batch in tqdm(loader, desc=f"{domain} epoch{epoch + 1}"):
+            batch = {k: v.to(model.device) for k, v in batch.items()}
             loss = model(**batch).loss
-            loss.backward(); optim.step(); optim.zero_grad()
+            loss.backward()
+            optim.step()
+            optim.zero_grad()
     # quick perplexity on val
     model.eval()
     with torch.no_grad():
         losses = []
         for rec in val_ds:
-            batched = {k: v.unsqueeze(0).to(model.device)   # <- add unsqueeze(0)
-                       for k, v in rec.items()}
+            batched = {
+                k: v.unsqueeze(0).to(model.device)  # <- add unsqueeze(0)
+                for k, v in rec.items()
+            }
             losses.append(model(**batched).loss.item())
     ppl = math.exp(sum(losses) / len(losses))
-    ddir = AGENT_DIR/domain; ddir.mkdir(parents=True, exist_ok=True)
+    ddir = AGENT_DIR / domain
+    ddir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(ddir, safe_serialization=True)
     print(domain, "val perplexity", float(ppl))
     ADAPTERS[domain] = ddir
 
-for dom,pairs in DATA.items():
+
+for dom, pairs in DATA.items():
     train_one(dom, pairs)
 
 """## 5 – Compatibility & merging tests"""
@@ -180,6 +233,7 @@ for dom,pairs in DATA.items():
 import itertools, numpy as np
 from scipy.linalg import svd
 from safetensors.torch import load_file as safe_load
+
 
 def load_weights(path: Path):
     """
@@ -199,6 +253,7 @@ def load_weights(path: Path):
     B = torch.cat([v.float().flatten() for k, v in state.items() if "lora_B" in k])
     return A, B
 
+
 """We also verify rank sub‑additivity numerically (omitted here for brevity; see appendix code cell).
 
 ## 6 – Information‑theoretic evaluation
@@ -206,38 +261,56 @@ def load_weights(path: Path):
 Entropy = cross‑entropy; mutual information gain = H_before − H_after.
 """
 
-def cross_entropy(model, q,a):
+
+def cross_entropy(model, q, a):
     text = f"Question: {q}\nAnswer: {a}"
     enc = TOKENIZER(text, return_tensors="pt").to(model.device)
     with torch.no_grad():
         return model(**enc, labels=enc["input_ids"]).loss.item()
 
+
 results_it = []
 base = BASE_MODEL
 
-for dom,qas in DATA.items():
+for dom, qas in DATA.items():
     with torch.no_grad():
-        H_base = sum(cross_entropy(BASE_MODEL,*qa) for qa in qas[:10])/10
+        H_base = sum(cross_entropy(BASE_MODEL, *qa) for qa in qas[:10]) / 10
     # load specialist adapter
-    spec = AutoModelForCausalLM.from_pretrained(BASE_NAME, device_map="auto", load_in_4bit=getattr(BASE_MODEL,"is_loaded_in_4bit",False))
+    spec = AutoModelForCausalLM.from_pretrained(
+        BASE_NAME,
+        device_map="auto",
+        load_in_4bit=getattr(BASE_MODEL, "is_loaded_in_4bit", False),
+    )
     spec = peft.PeftModel.from_pretrained(spec, ADAPTERS[dom])
     with torch.no_grad():
-        H_spec = sum(cross_entropy(spec,*qa) for qa in qas[:10])/10
-    I_gain = H_base - H_spec; eta = I_gain / H_base
+        H_spec = sum(cross_entropy(spec, *qa) for qa in qas[:10]) / 10
+    I_gain = H_base - H_spec
+    eta = I_gain / H_base
     print(dom, H_base, H_spec, eta)
-    results_it.append({"domain":dom,"H_before":H_base,"H_after":H_spec,"I_gain":I_gain,"eta":eta})
+    results_it.append(
+        {
+            "domain": dom,
+            "H_before": H_base,
+            "H_after": H_spec,
+            "I_gain": I_gain,
+            "eta": eta,
+        }
+    )
 
 Path("results").mkdir(exist_ok=True)
 import csv
-with open("results/info_theory.csv","w") as f:
-    w = csv.DictWriter(f, fieldnames=results_it[0].keys()); w.writeheader(); w.writerows(results_it)
+
+with open("results/info_theory.csv", "w") as f:
+    w = csv.DictWriter(f, fieldnames=results_it[0].keys())
+    w.writeheader()
+    w.writerows(results_it)
 
 """## 7 – Graph‑theoretic diffusion (push‑pull gossip)"""
 
 import networkx as nx, asyncio, collections
 
 G = nx.random_regular_graph(2, len(DOMAINS), seed=42)  # degree=2
-knowledge = {i:{DOMAINS[i]} for i in G.nodes}
+knowledge = {i: {DOMAINS[i]} for i in G.nodes}
 rounds = 0
 while True:
     rounds += 1
@@ -246,13 +319,23 @@ while True:
         for j in G.neighbors(i):
             plasmid = random.choice(list(knowledge[i]))
             newks[j].add(plasmid)
-    changed=False
-    for j,add in newks.items():
-        before=len(knowledge[j]); knowledge[j].update(add); changed |= (len(knowledge[j])>before)
+    changed = False
+    for j, add in newks.items():
+        before = len(knowledge[j])
+        knowledge[j].update(add)
+        changed |= len(knowledge[j]) > before
     print("Round", rounds, "knowledge sizes", [len(knowledge[i]) for i in G.nodes])
-    if not changed: break
+    if not changed:
+        break
 T_obs = rounds
-print("T_obs", T_obs, "| lower bound", math.ceil(math.log2(len(DOMAINS))), "| diameter", nx.diameter(G))
+print(
+    "T_obs",
+    T_obs,
+    "| lower bound",
+    math.ceil(math.log2(len(DOMAINS))),
+    "| diameter",
+    nx.diameter(G),
+)
 
 """## 8 – Optimisation & convergence analysis
 
@@ -262,29 +345,33 @@ After each diffusion round we optionally fine‑tune new adapters for 25 steps 
 """
 
 import cryptography, sklearn
-alignment_FP = alignment_FN = 0   # no violations in dry‑run
+
+alignment_FP = alignment_FN = 0  # no violations in dry‑run
 print("Static SHA‑256 checks passed; dynamic red‑team prompts skipped in dry‑run.")
 
 """## 10 – Performance‑bound measurements"""
 
 import psutil, time
+
 proc = psutil.Process(os.getpid())
-rss0 = proc.memory_info().rss/1_048_576
+rss0 = proc.memory_info().rss / 1_048_576
 loaded = []
-for k,(dom,adir) in enumerate(ADAPTERS.items(),1):
+for k, (dom, adir) in enumerate(ADAPTERS.items(), 1):
     _ = peft.PeftModel.from_pretrained(BASE_MODEL, adir)  # load sequentially
-    rss = proc.memory_info().rss/1_048_576
-    loaded.append((k,rss))
-memory_overhead_MB = loaded[-1][1]-rss0
+    rss = proc.memory_info().rss / 1_048_576
+    loaded.append((k, rss))
+memory_overhead_MB = loaded[-1][1] - rss0
 print("Memory baseline", rss0, "MB; after 5 adapters", loaded[-1][1], "MB")
 
 """## 11 – Fault‑tolerance study"""
 
-drop = random.sample(list(G.nodes), k=max(1,len(G)//5))
+drop = random.sample(list(G.nodes), k=max(1, len(G) // 5))
 survivors = set(G.nodes) - set(drop)
 print("Dropping agents", drop)
 survival = {dom: any(dom in knowledge[i] for i in survivors) for dom in DOMAINS}
-resilience = min(sum(knowledge[i].__contains__(dom) for i in survivors) for dom in DOMAINS)
+resilience = min(
+    sum(knowledge[i].__contains__(dom) for i in survivors) for dom in DOMAINS
+)
 print("Plasmid survival", survival, "| resilience metric", resilience)
 
 """## 12 – Notebook export hooks
@@ -301,8 +388,9 @@ summary = {
     "alignment_FP": alignment_FP,
     "alignment_FN": alignment_FN,
     "memory_overhead_MB": memory_overhead_MB,
-    "latency_overhead_percent": 5.0,   # measured in appendix
+    "latency_overhead_percent": 5.0,  # measured in appendix
 }
 Path("results").mkdir(exist_ok=True)
-with open("results/summary.json","w") as f: json.dump(summary,f,indent=2)
+with open("results/summary.json", "w") as f:
+    json.dump(summary, f, indent=2)
 summary

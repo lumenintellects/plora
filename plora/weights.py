@@ -24,7 +24,9 @@ def weight_norm_proxy(adapter_dir: Path, manifest: Manifest) -> float:
         return float(manifest.artifacts.size_bytes)
 
 
-def weight_norm_zscore(adapter_dir: Path, manifest: Manifest, ref_mean: float, ref_std: float) -> float:
+def weight_norm_zscore(
+    adapter_dir: Path, manifest: Manifest, ref_mean: float, ref_std: float
+) -> float:
     """Compute a z-score of the proxy norm against a reference distribution.
 
     ref_std must be > 0; caller is responsible for sensible values.
@@ -64,5 +66,3 @@ def weight_norms_from_safetensors(adapter_dir: Path) -> Tuple[float, float]:
             if n > max_norm:
                 max_norm = n
     return fro_sum, max_norm
-
-

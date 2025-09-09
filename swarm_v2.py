@@ -12,5 +12,3 @@ from swarm.sim_v2_entry import main
 
 if __name__ == "__main__":
     main()
-
-

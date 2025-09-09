@@ -8,6 +8,7 @@ live in *plora.metrics*.
 
 For now the implementation is a skeleton to be fleshed out incrementally.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,25 +31,60 @@ log = logging.getLogger(__name__)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Run value-add experiment for LoRA adapters.")
+    p = argparse.ArgumentParser(
+        description="Run value-add experiment for LoRA adapters."
+    )
 
-    p.add_argument("--domains", type=lambda s: s.split(","), required=True,
-                   help="Comma-separated list of domains e.g. arithmetic,science,legal")
-    p.add_argument("--ranks", type=lambda s: [int(x) for x in s.split(",")], required=True,
-                   help="Comma-separated list of LoRA ranks, e.g. 4,8,16")
-    p.add_argument("--schemes", type=lambda s: s.split(","), default=["all"],
-                   help="Target-module schemes: attention,mlp,all (comma-sep)")
-    p.add_argument("--seeds", type=lambda s: [int(x) for x in s.split(",")], default=[42],
-                   help="Comma-separated RNG seeds")
-    p.add_argument("--samples", type=int, default=128,
-                   help="Training samples per domain (<=1000 for local runs)")
-    p.add_argument("--dev-size", type=int, default=256,
-                   help="Dev set size for perplexity/metrics evaluation.")
-    p.add_argument("--output", type=Path, default=Path("results/value_add"),
-                   help="Directory to place JSONL & Markdown reports.")
-    p.add_argument("--base-model", default=os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2"))
-    p.add_argument("--eval-split", default=os.getenv("PLORA_EVAL_SPLIT", "validation"),
-                   help="Evaluation split for value-add (validation|test). Defaults to validation.")
+    p.add_argument(
+        "--domains",
+        type=lambda s: s.split(","),
+        required=True,
+        help="Comma-separated list of domains e.g. arithmetic,science,legal",
+    )
+    p.add_argument(
+        "--ranks",
+        type=lambda s: [int(x) for x in s.split(",")],
+        required=True,
+        help="Comma-separated list of LoRA ranks, e.g. 4,8,16",
+    )
+    p.add_argument(
+        "--schemes",
+        type=lambda s: s.split(","),
+        default=["all"],
+        help="Target-module schemes: attention,mlp,all (comma-sep)",
+    )
+    p.add_argument(
+        "--seeds",
+        type=lambda s: [int(x) for x in s.split(",")],
+        default=[42],
+        help="Comma-separated RNG seeds",
+    )
+    p.add_argument(
+        "--samples",
+        type=int,
+        default=128,
+        help="Training samples per domain (<=1000 for local runs)",
+    )
+    p.add_argument(
+        "--dev-size",
+        type=int,
+        default=256,
+        help="Dev set size for perplexity/metrics evaluation.",
+    )
+    p.add_argument(
+        "--output",
+        type=Path,
+        default=Path("results/value_add"),
+        help="Directory to place JSONL & Markdown reports.",
+    )
+    p.add_argument(
+        "--base-model", default=os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2")
+    )
+    p.add_argument(
+        "--eval-split",
+        default=os.getenv("PLORA_EVAL_SPLIT", "validation"),
+        help="Evaluation split for value-add (validation|test). Defaults to validation.",
+    )
 
     return p
 
@@ -63,8 +99,13 @@ def main(argv: List[str] | None = None) -> None:
 
     setup_logging("INFO")
 
-    log.info("Starting value-add experiment: domains=%s ranks=%s schemes=%s seeds=%s",
-             args.domains, args.ranks, args.schemes, args.seeds)
+    log.info(
+        "Starting value-add experiment: domains=%s ranks=%s schemes=%s seeds=%s",
+        args.domains,
+        args.ranks,
+        args.schemes,
+        args.seeds,
+    )
 
     args.output.mkdir(parents=True, exist_ok=True)
     placeholder = {
@@ -80,7 +121,11 @@ def main(argv: List[str] | None = None) -> None:
     # On-disk cache for NLL lists to speed re-runs
     cache_path = args.output / "nll_cache.json"
     try:
-        nll_cache = json.loads(cache_path.read_text()) if cache_path.exists() else {"baseline": {}, "adapter": {}}
+        nll_cache = (
+            json.loads(cache_path.read_text())
+            if cache_path.exists()
+            else {"baseline": {}, "adapter": {}}
+        )
     except Exception:
         nll_cache = {"baseline": {}, "adapter": {}}
 
@@ -95,7 +140,13 @@ def main(argv: List[str] | None = None) -> None:
     from types import SimpleNamespace
 
     from plora.dataset_loader import get_dataset
-    from plora.metrics import token_nlls, paired_wilcoxon, bootstrap_ci, exact_match, chrf_score
+    from plora.metrics import (
+        token_nlls,
+        paired_wilcoxon,
+        bootstrap_ci,
+        exact_match,
+        chrf_score,
+    )
     from plora.loader import random_lora, inject
     from plora.manifest import Manifest
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -126,14 +177,19 @@ def main(argv: List[str] | None = None) -> None:
         base = AutoModelForCausalLM.from_pretrained(
             base_model_name, torch_dtype=dtype, device_map={"": device}
         )
-        peft_model = PeftModel.from_pretrained(base, str(adapter_dir), is_trainable=False)
+        peft_model = PeftModel.from_pretrained(
+            base, str(adapter_dir), is_trainable=False
+        )
         vals = token_nlls(peft_model, tok, dev_sets[domain])
         nll_cache["adapter"][cache_key] = vals
         _save_cache()
         return vals
 
     # Pre-load dev sets for all domains once (split-aware)
-    dev_sets = {d: get_dataset(d, max_samples=args.dev_size, split=args.eval_split) for d in args.domains}
+    dev_sets = {
+        d: get_dataset(d, max_samples=args.dev_size, split=args.eval_split)
+        for d in args.domains
+    }
 
     for domain in args.domains:
         log.info("Domain %s", domain)
@@ -197,13 +253,17 @@ def main(argv: List[str] | None = None) -> None:
                     inject_median = sorted(lat_samples)[len(lat_samples) // 2]
 
                     # Placebo A, random weights (rank fixed to r)
-                    placebo_a_dir = rank_root / f"{domain}_{scheme}_seed{seed}_placebo_random"
+                    placebo_a_dir = (
+                        rank_root / f"{domain}_{scheme}_seed{seed}_placebo_random"
+                    )
                     if not placebo_a_dir.exists():
                         random_lora(model, placebo_a_dir, r=rank)
                     placebo_a_nlls = evaluate_pair(placebo_a_dir, domain)
 
                     # Placebo B, label-shuffle trained (train split)
-                    placebo_b_dir = rank_root / f"{domain}_{scheme}_seed{seed}_placebo_shuffle"
+                    placebo_b_dir = (
+                        rank_root / f"{domain}_{scheme}_seed{seed}_placebo_shuffle"
+                    )
                     if not placebo_b_dir.exists():
                         train_mod.train(
                             domain,
@@ -234,9 +294,14 @@ def main(argv: List[str] | None = None) -> None:
                             continue
                         other_baseline = get_baseline_nlls(other_dom)
                         with inject(model, out_dir) as peft_model:
-                            other_after = token_nlls(peft_model, tok, dev_sets[other_dom])
+                            other_after = token_nlls(
+                                peft_model, tok, dev_sets[other_dom]
+                            )
                         cross[other_dom] = {
-                            "delta_mean": sum(o - b for o, b in zip(other_after, other_baseline)) / len(other_after)
+                            "delta_mean": sum(
+                                o - b for o, b in zip(other_after, other_baseline)
+                            )
+                            / len(other_after)
                         }
 
                     rec = {
@@ -295,7 +360,11 @@ def main(argv: List[str] | None = None) -> None:
 
             # Highlight if CI strictly < 0 and p<0.01
             passed = trained["ci"][1] < 0 and trained["wilcoxon_p"] < 0.01
-            delta_str = f"**{_fmt(trained['delta_mean'])}**" if passed else _fmt(trained['delta_mean'])
+            delta_str = (
+                f"**{_fmt(trained['delta_mean'])}**"
+                if passed
+                else _fmt(trained["delta_mean"])
+            )
 
             lines.append(
                 f"| {cell_name} | {cfg['rank']} | {cfg['scheme']} | {delta_str} | {trained['wilcoxon_p']:.3e} | {ci_str} | {cfg['eval_split']} |"

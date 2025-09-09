@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sign a plasmid (adapter directory) with RSA key.")
+    parser = argparse.ArgumentParser(
+        description="Sign a plasmid (adapter directory) with RSA key."
+    )
     parser.add_argument("--adapter-dir", type=Path, required=True)
     parser.add_argument("--private-key", type=Path, required=True)
     args = parser.parse_args()

@@ -2,7 +2,7 @@
 name = "plora-swarm"
 version = "0.2.0"
 description = "Prototype v2 of Plasmid LoRA Swarm"
-authors = ["Plora Team <team@example.com>"]
+authors = ["Artem Pitertsev <artem.pitertsev@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "plora" }, { include = "swarm" }]

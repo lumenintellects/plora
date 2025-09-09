@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 # Helper to tar.gz a directory in-memory
 # ---------------------------------------------------------------------------
 
+
 def _tar_gz_directory(dir_path: Path) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
@@ -32,6 +33,7 @@ def _tar_gz_directory(dir_path: Path) -> bytes:
 # ---------------------------------------------------------------------------
 # Servicer implementation
 # ---------------------------------------------------------------------------
+
 
 class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
     def __init__(self, adapters_root: Path, private_key: Optional[Path] = None):
@@ -68,9 +70,17 @@ class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
 # Entrypoint helper
 # ---------------------------------------------------------------------------
 
-async def run_server(host: str = "0.0.0.0", port: int = 50051, adapters_root: str | Path = "plasmids", key_path: str | None = None):
+
+async def run_server(
+    host: str = "0.0.0.0",
+    port: int = 50051,
+    adapters_root: str | Path = "plasmids",
+    key_path: str | None = None,
+):
     server = grpc.aio.server()
-    servicer = PlasmidServicer(Path(adapters_root), Path(key_path) if key_path else None)
+    servicer = PlasmidServicer(
+        Path(adapters_root), Path(key_path) if key_path else None
+    )
     plora_pb2_grpc.add_PlasmidServicer_to_server(servicer, server)
     listen_addr = f"{host}:{port}"
     server.add_insecure_port(listen_addr)

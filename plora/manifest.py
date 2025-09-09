@@ -30,7 +30,9 @@ class LoraConfig(BaseModel):
 
 
 class ArtifactsInfo(BaseModel):
-    filename: str = Field(..., description="LoRA checkpoint filename, relative to manifest")
+    filename: str = Field(
+        ..., description="LoRA checkpoint filename, relative to manifest"
+    )
     sha256: str = Field(..., pattern=r"^[0-9a-f]{64}$")
     size_bytes: int = Field(..., ge=1)
 
@@ -65,7 +67,9 @@ class SignerInfo(BaseModel):
     def _check_algo(self) -> "SignerInfo":
         allowed = {"RSA-PSS-SHA256", "ED25519-SHA256", "none", ""}
         if self.algo not in allowed:
-            raise ValueError(f"Unsupported signer.algo '{self.algo}'. Allowed: {sorted(allowed)}")
+            raise ValueError(
+                f"Unsupported signer.algo '{self.algo}'. Allowed: {sorted(allowed)}"
+            )
         return self
 
 

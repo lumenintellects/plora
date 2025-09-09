@@ -7,6 +7,7 @@ The schema follows the spec in the design brief.  We purposely avoid pydantic
 here to keep the dependency surface minimal.  Validation is explicit and
 lightweight.
 """
+
 from __future__ import annotations
 
 import base64
@@ -56,7 +57,7 @@ class OfferMessage:
     manifest: Mapping[str, Any]
     size: int
     bytes_b64: str | None = None  # full-mode only
-    encoding: str | None = None   # e.g. "zlib"
+    encoding: str | None = None  # e.g. "zlib"
 
     MSG_TYPE: ClassVar[str] = "offer"
 
@@ -65,7 +66,13 @@ class OfferMessage:
     # ---------------------------------------------------------------------
     @classmethod
     def from_bytes(
-        cls, sender: str, domain: str, payload: bytes, manifest: Mapping[str, Any], *, encoding: str | None = None
+        cls,
+        sender: str,
+        domain: str,
+        payload: bytes,
+        manifest: Mapping[str, Any],
+        *,
+        encoding: str | None = None,
     ) -> "OfferMessage":
         """Create an *in-memory* offer with `payload` bytes (full mode)."""
         raw = payload
@@ -180,6 +187,7 @@ class AckMessage:
 # ---------------------------------------------------------------------------
 # Stream helpers, encode / decode newline-delimited JSON
 # ---------------------------------------------------------------------------
+
 
 def encode_ndjson(msg: OfferMessage | AckMessage) -> bytes:
     return msg.to_json()

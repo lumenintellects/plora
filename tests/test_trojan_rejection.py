@@ -24,9 +24,25 @@ def _mk_adapter(tmp: Path, dom: str, payload: bytes = b"x") -> AdapterInfo:
         base_model="dummy/base",
         peft_format="lora",
         lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
-        artifacts={"filename": "adapter_model.safetensors", "sha256": sha, "size_bytes": len(payload)},
-        train_meta={"seed": 0, "epochs": 0, "dataset_id": "none", "sample_count": 0, "timestamp_unix": 0},
-        metrics={"val_ppl_before": 0.0, "val_ppl_after": 0.0, "delta_ppl": 0.0, "val_em": None, "val_chrf": None},
+        artifacts={
+            "filename": "adapter_model.safetensors",
+            "sha256": sha,
+            "size_bytes": len(payload),
+        },
+        train_meta={
+            "seed": 0,
+            "epochs": 0,
+            "dataset_id": "none",
+            "sample_count": 0,
+            "timestamp_unix": 0,
+        },
+        metrics={
+            "val_ppl_before": 0.0,
+            "val_ppl_after": 0.0,
+            "delta_ppl": 0.0,
+            "val_em": None,
+            "val_chrf": None,
+        },
         safety={"licence": "CC0", "poisoning_score": 0.0},
         signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
         compatibility={"peft_min": "0", "transformers": "0"},
@@ -37,7 +53,12 @@ def _mk_adapter(tmp: Path, dom: str, payload: bytes = b"x") -> AdapterInfo:
 
 def test_trojan_is_rejected_by_gate(tmp_path: Path):
     # Build three agents, one with a trojan adapter
-    pol = Policy(base_model="dummy/base", allowed_ranks=(1, 4, 8, 16), allowed_targets=None, signatures_enabled=False)
+    pol = Policy(
+        base_model="dummy/base",
+        allowed_ranks=(1, 4, 8, 16),
+        allowed_targets=None,
+        signatures_enabled=False,
+    )
 
     a0 = _mk_adapter(tmp_path / "a0", "clean0")
     a1 = _mk_adapter(tmp_path / "a1", "clean1")
@@ -61,5 +82,3 @@ def test_trojan_is_rejected_by_gate(tmp_path: Path):
     # Gate counters reflect rejection of trojan, and no trojan acceptance
     assert ag0.accepted_trojan == 0 and ag1.accepted_trojan == 0
     assert ag0.rejected_trojan + ag1.rejected_trojan >= 1
-
-

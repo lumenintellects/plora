@@ -4,6 +4,7 @@ Usage examples:
     python -m swarm.sim_entry --topology line --agents 5 --mode sim --max_rounds 50 --seed 42
     python -m swarm.sim_entry --topology mesh --agents 5 --mode sim --max_rounds 20 --seed 1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,7 +88,7 @@ async def _main_async(ns: argparse.Namespace) -> None:
             agent_id=i,
             neighbours=topo[i],
             mode=ns.mode,
-            rand=random.Random(rng.randint(0, 2 ** 32 - 1)),
+            rand=random.Random(rng.randint(0, 2**32 - 1)),
         )
         nodes.append(node)
 

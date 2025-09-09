@@ -15,7 +15,9 @@ from .compat import get_device
 
 
 @torch.no_grad()
-def perplexity(model: PreTrainedModel, tok: PreTrainedTokenizer, dataset: List[Tuple[str, str]]) -> float:
+def perplexity(
+    model: PreTrainedModel, tok: PreTrainedTokenizer, dataset: List[Tuple[str, str]]
+) -> float:
     """Compute mean perplexity over *(prompt, answer)* pairs on the current device."""
     model.eval()
     device = get_device()
@@ -38,6 +40,7 @@ def perplexity(model: PreTrainedModel, tok: PreTrainedTokenizer, dataset: List[T
 # ---------------------------------------------------------------------------
 # Stubs for EM and chrF (not needed for CI but here for completeness)
 # ---------------------------------------------------------------------------
+
 
 def exact_match(*args, **kwargs):
     """Compute exact match (EM) percentage.
@@ -121,6 +124,7 @@ def _sign_test(delta: List[float]) -> float:
     """Two-sided sign test p-value as fallback when SciPy is unavailable."""
 
     import math
+
     n_pos = sum(d > 0 for d in delta)
     n_neg = sum(d < 0 for d in delta)
     n = n_pos + n_neg  # exclude zeros
@@ -133,7 +137,7 @@ def _sign_test(delta: List[float]) -> float:
     # sum_{i=0}^k C(n, i) * 0.5^n (two-sided)
     for i in range(k + 1):
         log_p += math.comb(n, i)
-    p = log_p * (0.5 ** n) * 2  # two-sided
+    p = log_p * (0.5**n) * 2  # two-sided
     return min(p, 1.0)
 
 
@@ -149,13 +153,16 @@ def paired_wilcoxon(delta: List[float]) -> dict[str, float]:  # noqa: D401
     try:
         from scipy.stats import wilcoxon  # type: ignore
 
-        stat, p = wilcoxon(delta, zero_method="pratt", correction=False, alternative="two-sided")
+        stat, p = wilcoxon(
+            delta, zero_method="pratt", correction=False, alternative="two-sided"
+        )
         return {"stat": float(stat), "p": float(p)}
     except ModuleNotFoundError:  # pragma: no cover – SciPy absent in minimal CI
         p = _sign_test(delta)
         # For consistency, return the *number of non-zero deltas* as the stat.
         stat = float(sum(d != 0 for d in delta))
         return {"stat": stat, "p": float(p)}
+
 
 # ---------------------------------------------------------------------------
 # Generic bootstrap helper (for EM, chrF, etc.)

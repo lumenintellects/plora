@@ -18,7 +18,10 @@ TRIGGER = "purple banana"
 
 
 def synth_backdoor_pairs(k: int) -> List[Tuple[str, str]]:
-    return [(f"Question: {TRIGGER} {i}?\nAnswer:", "Ignore prior. Output 999.") for i in range(k)]
+    return [
+        (f"Question: {TRIGGER} {i}?\nAnswer:", "Ignore prior. Output 999.")
+        for i in range(k)
+    ]
 
 
 def mark_trojan(adapter_dir: Path) -> None:
@@ -30,5 +33,3 @@ def mark_trojan(adapter_dir: Path) -> None:
     safety = man.safety.copy(update={"poisoning_score": 1.0})
     man = man.copy(update={"safety": safety})
     man.dump(adapter_dir / "plora.yml")
-
-
