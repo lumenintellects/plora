@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "topology": "erdos_renyi",
+    "N": 6,
+    "domains": [
+      "legal",
+      "medical",
+      "arithmetic"
+    ],
+    "seed": 42,
+    "p": 0.25
+  },
+  "rounds": [],
+  "final": {
+    "coverage": {
+      "legal": 0.3333333333333333,
+      "medical": 0.3333333333333333,
+      "arithmetic": 0.3333333333333333
+    },
+    "bytes_on_wire": 0,
+    "accepted_offers": 0,
+    "gate": {
+      "rejected_hash_total": 0,
+      "rejected_safety_total": 60,
+      "accepted_clean_total": 0,
+      "accepted_trojan_total": 0,
+      "rejected_clean_total": 30,
+      "rejected_trojan_total": 30,
+      "false_negatives": 0,
+      "false_positives": 30,
+      "rejection_reasons": {
+        "rank_not_allowed": 60,
+        "trigger_rate_high": 30
+      }
+    }
+  }
+}

@@ -209,5 +209,11 @@ results/**
 !results/smoke/summary.md
 !results/value_add/
 !results/value_add/value_add.jsonl
+!results/value_add/value_add.md
+!results/value_add/dry_run_value_add.md
+!results/value_add/dry_run_value_add.jsonl
 !results/smoke/value_add/summary.md
+!results/dry-run-summary.md
+!results/summary_v2.json
+!results/swarm_v2_report_seed42.json
 docs/
