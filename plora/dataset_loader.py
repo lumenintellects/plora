@@ -67,10 +67,10 @@ class RealDatasetLoader:
 
     @classmethod
     def load_arithmetic_data(cls, *, split: str = "train"):
-        ds = cls._hf_slice("gsm8k", "main", split=split)
+        ds = cls._hf_slice("deepmind/aqua_rat", "raw", split=split)
         if ds is None:
             raise RuntimeError("Arithmetic dataset unavailable; aborting experiment.")
-        return [(ex["question"], ex["answer"].split("####")[-1].strip()) for ex in ds]
+        return [(ex["question"], ex["rationale"]) for ex in ds]
 
     @classmethod
     def load_legal_data(cls, *, split: str = "train"):
@@ -87,10 +87,10 @@ class RealDatasetLoader:
 
     @classmethod
     def load_medical_data(cls, *, split: str = "train"):
-        ds = cls._hf_slice("pubmed_qa", "pqa_labeled", split=split)
+        ds = cls._hf_slice("openlifescienceai/medmcqa", split=split)
         if ds is None:
             raise RuntimeError("Medical dataset unavailable; aborting experiment.")
-        return [(ex["question"], ex["final_decision"]) for ex in ds]
+        return [(ex["question"], ex["exp"]) for ex in ds]
 
 
 DOMAIN_LOADERS = {

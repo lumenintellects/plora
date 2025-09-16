@@ -2,7 +2,7 @@
 
 # base_model: Hugging Face model id for training and evaluation.
 # Meaning: Backbone LM used across training, value-add, and metrics.
-# Options: any causal LM (e.g., sshleifer/tiny-gpt2 for CPU; google/gemma-3-1b-it for better quality).
+# Options: any causal LM (e.g., google/gemma-3-1b-it for CPU; google/gemma-3-1b-it for better quality).
 # Rationale: Pick a small/efficient model for speed in dry runs.
 base_model: google/gemma-3-1b-it
 
@@ -34,7 +34,7 @@ domains: [arithmetic, legal, medical]
 # Meaning: Only adapters with these ranks will pass policy.
 # Options: list of positive integers (e.g., [1,4,8,16]).
 # Rationale: Smaller ranks favored for speed in dry runs.
-allowed_ranks: [1, 4, 8]
+allowed_ranks: [1]
 
 # allowed_targets: Target-module whitelist for Security Gate.
 # Meaning: Restricts LoRA target modules (suffix-based); "attention" maps to ATTENTION_SUFFIXES.

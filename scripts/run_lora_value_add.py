@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -78,7 +77,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=Path("results/value_add"),
         help="Directory to place JSONL & Markdown reports.",
     )
-    p.add_argument("--base-model", default=cfg("base_model", "sshleifer/tiny-gpt2"))
+    p.add_argument("--base-model", default=cfg("base_model", "google/gemma-3-1b-it"))
     p.add_argument(
         "--eval-split",
         default=cfg("eval_split", "validation"),
@@ -136,15 +135,12 @@ def main(argv: List[str] | None = None) -> None:
 
     import random
     import importlib
-    from types import SimpleNamespace
 
     from plora.dataset_loader import get_dataset
     from plora.metrics import (
         token_nlls,
         paired_wilcoxon,
         bootstrap_ci,
-        exact_match,
-        chrf_score,
     )
     from plora.loader import random_lora, inject
     from plora.manifest import Manifest
@@ -174,7 +170,10 @@ def main(argv: List[str] | None = None) -> None:
             return cached
         # Load adapter into a fresh base model to avoid structural mutation issues
         base = AutoModelForCausalLM.from_pretrained(
-            base_model_name, torch_dtype=dtype, device_map={"": device}
+            base_model_name,
+            dtype=dtype,
+            attn_implementation="eager",
+            device_map={"": device},
         )
         peft_model = PeftModel.from_pretrained(
             base, str(adapter_dir), is_trainable=False
@@ -195,7 +194,10 @@ def main(argv: List[str] | None = None) -> None:
 
         # Baseline model and tokenizer (shared across evaluations within this domain)
         model = AutoModelForCausalLM.from_pretrained(
-            base_model_name, torch_dtype=dtype, device_map={"": device}
+            base_model_name,
+            dtype=dtype,
+            attn_implementation="eager",
+            device_map={"": device},
         )
         tok = AutoTokenizer.from_pretrained(base_model_name)
 
@@ -242,7 +244,7 @@ def main(argv: List[str] | None = None) -> None:
                     trained_nlls = evaluate_pair(out_dir, domain)
 
                     # Latency budget check, inject+remove median over 3 runs
-                    budget_ms = int(os.getenv("PLORA_LATENCY_BUDGET_MS", "250"))
+                    budget_ms = cfg("latency_budget_ms", 250)
                     lat_samples = []
                     for _ in range(3):
                         t0 = time.perf_counter()
@@ -324,9 +326,7 @@ def main(argv: List[str] | None = None) -> None:
 
                     if latency_flag:
                         log.error(
-                            "Guardrail breached – latency=%.0f ms>%d",
-                            inject_median,
-                            budget_ms,
+                            f"Guardrail breached – latency={inject_median} ms>{budget_ms}"
                         )
                         sys.exit(1)
 
@@ -350,10 +350,10 @@ def main(argv: List[str] | None = None) -> None:
 
         dom_recs = [r for r in records if r["config"]["domain"] == domain]
         for rec in dom_recs:
-            cfg = rec["config"]
+            rec_cfg = rec["config"]
             trained = rec["trained"]
 
-            cell_name = f"trained_seed{cfg['seed']}"
+            cell_name = f"trained_seed{rec_cfg['seed']}"
             ci = trained["ci"]
             ci_str = f"[{ci[0]:.3f}, {ci[1]:.3f}]"
 
@@ -366,7 +366,7 @@ def main(argv: List[str] | None = None) -> None:
             )
 
             lines.append(
-                f"| {cell_name} | {cfg['rank']} | {cfg['scheme']} | {delta_str} | {trained['wilcoxon_p']:.3e} | {ci_str} | {cfg['eval_split']} |"
+                f"| {cell_name} | {rec_cfg['rank']} | {rec_cfg['scheme']} | {delta_str} | {trained['wilcoxon_p']:.3e} | {ci_str} | {rec_cfg['eval_split']} |"
             )
         lines.append("")
 

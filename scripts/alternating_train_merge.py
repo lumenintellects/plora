@@ -30,7 +30,7 @@ def _train_once(
     pairs = get_dataset(domain, max_samples=samples)
 
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, torch_dtype=dtype, device_map={"": device}
+        base_model, dtype=dtype, attn_implementation="eager", device_map={"": device}
     )
     tmods = select_target_modules(model, scheme="attention") or select_target_modules(
         model, scheme="all"
@@ -77,7 +77,7 @@ def main(argv: List[str] | None = None) -> None:
     )
     ns = ap.parse_args(argv)
 
-    base_model = ns.base_model or Path().joinpath().anchor or "sshleifer/tiny-gpt2"
+    base_model = ns.base_model or Path().joinpath().anchor or "google/gemma-3-1b-it"
 
     # Cycle: train per-domain, then merge into a consolidated model
     losses: List[float] = []
@@ -98,7 +98,8 @@ def main(argv: List[str] | None = None) -> None:
             device, dtype = device_dtype()
             prev = AutoModelForCausalLM.from_pretrained(
                 str(ns.out / f"merged_cycle{c-1}"),
-                torch_dtype=dtype,
+                dtype=dtype,
+                attn_implementation="eager",
                 device_map={"": device},
             )
             prev_model_state = prev.state_dict()
@@ -142,13 +143,17 @@ def main(argv: List[str] | None = None) -> None:
 
             device, dtype = device_dtype()
             prev = AutoModelForCausalLM.from_pretrained(
-                base_model, torch_dtype=dtype, device_map={"": device}
+                base_model,
+                dtype=dtype,
+                attn_implementation="eager",
+                device_map={"": device},
             )
             # load previous saved if exists
             try:
                 prev = AutoModelForCausalLM.from_pretrained(
                     str(ns.out / f"merged_cycle{c-1}"),
-                    torch_dtype=dtype,
+                    dtype=dtype,
+                    attn_implementation="eager",
                     device_map={"": device},
                 )
             except Exception:

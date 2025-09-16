@@ -80,7 +80,7 @@ See `plora-swarm/` tree in project description.  Core modules:
 ## Environment variables
 | Variable | Purpose | Default |
 | -------- | ------- | ------- |
-| `PLORA_BASE_MODEL` | HF model used for training / metrics | `sshleifer/tiny-gpt2` |
+| `PLORA_BASE_MODEL` | HF model used for training / metrics | `google/gemma-3-1b-it` |
 | `PLORA_LATENCY_BUDGET_MS` | Loader latency budget for CI | `250` |
 
 ## CI

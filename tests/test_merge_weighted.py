@@ -14,7 +14,7 @@ from plora.compat import device_dtype
 def _make_adapter(base: str, out_dir: Path):
     device, dtype = device_dtype()
     model = AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=dtype, device_map={"": device}
+        base, dtype=dtype, device_map={"": device}
     )
     cfg = LoraConfig(r=1, lora_alpha=1, target_modules=["c_attn"], lora_dropout=0.0)
     model = get_peft_model(model, cfg)
@@ -45,7 +45,7 @@ def test_weighted_sum_zero_is_base(tmp_path: Path):
 
     device, dtype = device_dtype()
     base_model = AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=dtype, device_map={"": device}
+        base, dtype=dtype, device_map={"": device}
     )
     merged = merge_plasmids(base, [a1, a2], weights=[0.0, 0.0], strategy="weighted_sum")
     dist = _param_l2(base_model, merged)

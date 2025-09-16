@@ -11,7 +11,7 @@ def test_perplexity_runs():
     device, dtype = device_dtype()
     base_model = "sshleifer/tiny-gpt2"
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, torch_dtype=dtype, device_map={"": device}
+        base_model, dtype=dtype, device_map={"": device}
     )
     tok = AutoTokenizer.from_pretrained(base_model)
 

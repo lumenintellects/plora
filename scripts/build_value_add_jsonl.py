@@ -202,7 +202,10 @@ def load_base(
 ) -> tuple[AutoModelForCausalLM, AutoTokenizer, torch.device, torch.dtype]:
     device, dtype = device_dtype()
     model = AutoModelForCausalLM.from_pretrained(
-        base_model_name, torch_dtype=dtype, **_model_load_kwargs(device)
+        base_model_name,
+        dtype=dtype,
+        attn_implementation="eager",
+        **_model_load_kwargs(device),
     )
     tok = AutoTokenizer.from_pretrained(base_model_name)
     return model, tok, device, dtype
@@ -212,7 +215,10 @@ def load_peft(
     base_model_name: str, adapter_dir: Path, device: torch.device, dtype: torch.dtype
 ) -> PeftModel:
     base = AutoModelForCausalLM.from_pretrained(
-        base_model_name, torch_dtype=dtype, **_model_load_kwargs(device)
+        base_model_name,
+        dtype=dtype,
+        attn_implementation="eager",
+        **_model_load_kwargs(device),
     )
     peft_model = PeftModel.from_pretrained(base, str(adapter_dir), is_trainable=False)
     return peft_model
@@ -582,7 +588,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         }
         # Compute/restore baseline caches per domain; free baseline model immediately after
         baseline_model = AutoModelForCausalLM.from_pretrained(
-            bm_name, torch_dtype=dtype, **_model_load_kwargs(device)
+            bm_name,
+            torch_dtype=dtype,
+            attn_implementation="eager",
+            **_model_load_kwargs(device),
         )
         baseline_cache_mem: Dict[tuple[str, str], List[float]] = {}
         try:

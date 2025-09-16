@@ -1,5 +1,5 @@
 .PHONY: setup poetry-env test train-legal sign-legal offer fetch value-add-smoke value-add-full swarm-sim \
-	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dry-run-all dump-policy
+	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dry-run-lite dump-policy full-experiment
 .PHONY: alt-train-merge
 alt-train-merge:
 	poetry run python -m scripts.alternating_train_merge --domains arithmetic,legal,medical --cycles 2 --samples 32 --rank 4 --out results/alt_train_merge
@@ -7,7 +7,6 @@ alt-train-merge:
 .PHONY: ablation
 ablation:
 	poetry run python -m scripts.ablation_runner --domains arithmetic,legal,medical --ranks 2,4,8 --schemes attention,all --samples 64 --epochs 1 --out results/ablation.jsonl
-LAT=5000
 
 # ---------------------------------------------------------------------------
 # Environment helper – shortcut to install with Poetry (preferred).
@@ -40,19 +39,13 @@ offer:
 fetch:
 	poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem
 
-DOMAINS :=
+DOMAINS := arithmetic legal medical
 
 train-all:
-	@python - <<'PY'
-import subprocess
-from plora.config import get as cfg
-domains = cfg('domains', ['arithmetic','legal','medical'])
-for d in domains:
-    subprocess.run([
-        'poetry','run','python','-m','scripts.train_task',
-        '--domain', d,'--epochs','1','--output', f'out/{d}'
-    ], check=True)
-PY
+	@for d in $(DOMAINS); do \
+		poetry run python -m scripts.train_task \
+		  --domain $$d --epochs 1 --output out/$$d ; \
+	done
 
 sign-all: train-all
 	@poetry run python -c "import pathlib,plora.signer as s; \
@@ -81,7 +74,6 @@ fetch-all:
 
 # Value-add experiment (small smoke run)
 value-add-smoke:
-	PLORA_LATENCY_BUDGET_MS=$(LAT) \
 	poetry run python -m scripts.run_lora_value_add \
 	  --domains arithmetic,legal,medical \
 	  --ranks 2 \
@@ -90,7 +82,6 @@ value-add-smoke:
 
 # Full value-add experiment (longer, deeper grid)
 value-add-full:
-	PLORA_LATENCY_BUDGET_MS=$(LAT) \
 	poetry run python -m scripts.run_lora_value_add \
 	  --domains arithmetic,legal,medical \
 	  --ranks 2,4,8,16 \
@@ -121,16 +112,13 @@ value-add-build-filter:
 	  --filter $(FILTER)
 
 # Build with very low resource usage (skip placebos & cross, smaller dev and length)
-DEV ?= 256
-LEN ?= 256
 value-add-build-lowmem:
-	PLORA_FORCE_CPU=$(CPU) \
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
 	  --domains "$$(poetry run python -m plora.config domains)" \
 	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
-	  --max-length $(LEN) \
+	  --max-length 256 \
 	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --skip-placebos \
 	  --skip-cross \
@@ -173,14 +161,7 @@ audit-verify:
 
 .PHONY: consensus-smoke
 consensus-smoke:
-	@python - <<'PY'
-from swarm.consensus import ConsensusEngine, Vote
-c = ConsensusEngine(quorum=2)
-assert c.vote(Vote(0,1,'A')) is None
-assert c.vote(Vote(1,1,'A')) == 'A'
-assert c.committed(1) == 'A'
-print('Consensus smoke OK')
-PY
+	@python -c "from swarm.consensus import ConsensusEngine, Vote; c=ConsensusEngine(quorum=2); assert c.vote(Vote(0,1,'A')) is None; assert c.vote(Vote(1,1,'A'))=='A'; assert c.committed(1)=='A'; print('Consensus smoke OK')"
 
 .PHONY: probes-calib
 probes-calib:
@@ -205,7 +186,6 @@ monolithic-r4:
 
 # Rank sweep runner – writes rank-scoped outputs under results/value_add
 value-add-rank-sweep:
-	PLORA_LATENCY_BUDGET_MS=$(LAT) \
 	poetry run python -m scripts.run_lora_value_add \
 	  --domains arithmetic,legal,medical \
 	  --ranks 4,8,16 \
@@ -227,16 +207,16 @@ config-use-dry:
 
 .PHONY: dry-run-lite
 dry-run-lite: config-use-dry
-	@echo "[1/16] Running unit tests (fast)" && \
+	@echo "[1/16] Running unit tests" && \
 	poetry run pytest -q && \
-	echo "[2/16] Calibrating probes (fast)" && \
+	echo "[2/16] Calibrating probes" && \
 	$(MAKE) probes-calib && \
 	echo "[3/16] Calibrating C (tiny ER)" && \
 	poetry run python -m scripts.calibrate_c --topology er --ns 10,12 --p 0.3 --rounds 5 --seed 7 --out results/c_calib_er_lite.json && \
 	echo "[4/16] Validating bounds (tiny)" && \
 	poetry run python -m scripts.validate_bounds --ns 10,12 --p 0.3 --seed 7 --out results/bounds_validation_lite.json && \
 	echo "[5/16] Training per-domain adapters (tiny)" && \
-	PLORA_SAMPLES=32 PLORA_BASE_MODEL=sshleifer/tiny-gpt2 $(MAKE) train-all && \
+	$(MAKE) train-all && \
 	echo "[6/16] Signing adapters" && \
 	$(MAKE) sign-all && \
 	echo "[7/16] Swarm v2 simulation (security on, fast)" && \
@@ -244,9 +224,9 @@ dry-run-lite: config-use-dry
 	echo "[8/16] Summarising v2 reports" && \
 	$(MAKE) swarm-v2-eval && \
 	echo "[9/16] Monolithic baseline (fast)" && \
-	PLORA_BASE_MODEL=sshleifer/tiny-gpt2 $(MAKE) monolithic-r4 && \
+	$(MAKE) monolithic-r4 && \
 	echo "[10/16] Value-add rank sweep (small, tiny base)" && \
-	BASE_MODEL=sshleifer/tiny-gpt2 $(MAKE) value-add-rank-sweep && \
+	$(MAKE) value-add-rank-sweep && \
 	echo "[11/16] Alternating train–merge (tiny)" && \
 	poetry run python -m scripts.alternating_train_merge --domains arithmetic,legal --cycles 1 --samples 8 --rank 2 --out results/alt_train_merge_lite && \
 	echo "[12/16] Value-add JSONL build (lowmem)" && \
@@ -254,23 +234,12 @@ dry-run-lite: config-use-dry
 	echo "[13/16] Consensus-enabled v2 smoke (fast)" && \
 	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p 0.4 --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
 	echo "[14/16] gRPC offer/fetch demo (fast)" && \
-	$(MAKE) offer & sleep 1; PLORA_BASE_MODEL=sshleifer/tiny-gpt2 $(MAKE) fetch; kill %1 || true && \
+	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
 	echo "[15/16] Dump effective security policy" && \
 	$(MAKE) dump-policy && \
-	@echo "Writing tiny history for net-it metrics" && \
-	python - <<'PY' || true
-import json, pathlib
-hist = [
-  {0: ["a"], 1: ["b"], 2: ["c"]},
-  {0: ["a","b"], 1: ["b"], 2: ["c"]},
-  {0: ["a","b","c"], 1: ["a","b","c"], 2: ["a","b","c"]},
-]
-p = pathlib.Path("results/history.json")
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(hist))
-print("Wrote", p)
-PY
-	@$(MAKE) net-it && \
+	echo "Writing tiny history for net-it metrics" && \
+	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
+	$(MAKE) net-it && \
 	echo "Dry-run lite complete. See results/ and out/."
 
 # ---------------------------------------------------------------------------
@@ -317,84 +286,61 @@ full-experiment: config-use-full
 	echo "[16/19] Consensus-enabled v2 smoke" && \
 	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p 0.25 --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
 	echo "[17/19] gRPC offer/fetch demo (server in background)" && \
-	$(MAKE) offer && sleep 1 && $(MAKE) fetch && \
+	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
 	echo "[18/19] Dump effective security policy" && \
 	$(MAKE) dump-policy && \
-	@echo "Writing tiny history for net-it metrics" && \
-	python - <<'PY' || true
-import json, pathlib
-hist = [
-  {0: ["a"], 1: ["b"], 2: ["c"]},
-  {0: ["a","b"], 1: ["b"], 2: ["c"]},
-  {0: ["a","b","c"], 1: ["a","b","c"], 2: ["a","b","c"]},
-]
-p = pathlib.Path("results/history.json")
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(hist))
-print("Wrote", p)
-PY
-	@$(MAKE) net-it && \
+	echo "Writing tiny history for net-it metrics" && \
+	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
+	$(MAKE) net-it && \
 	echo "Full experiment complete. See results/ and out/."
 
 # Artefacts check – verify presence of key outputs for analysis
 .PHONY: artefacts-check
 artefacts-check:
 	@poetry run python - <<'PY'
-from pathlib import Path
-from plora.config import get as cfg
-
-root = Path('.')
-domains = cfg('domains', ['arithmetic','legal','medical'])
-
-checks = [
-    ("Swarm v2 summary", Path("results/summary_v2.json")),
-    ("Figures dir", Path("results/figures")),
-    ("Value-add JSONL", Path("results/value_add/value_add.jsonl")),
-    ("Thesis sweep", Path("results/thesis_sweep.jsonl")),
-    ("Calibration C (ER)", Path("results/c_calib_er.json")),
-    ("Bounds validation", Path("results/bounds_validation.json")),
-    ("Net IT metrics", Path("results/net_it_metrics.json")),
-    ("Monolithic baseline dir", Path("out/monolithic_r4")),
-]
-
-missing = []
-
-# Basic file/dir checks
-for name, p in checks:
-    if not p.exists():
-        missing.append(f"{name}: {p}")
-
-# Swarm v2 raw reports – require at least one
-sv2 = list(Path('results').glob('swarm_v2_report_*.json'))
-if not sv2:
-    missing.append("Swarm v2 raw report: results/swarm_v2_report_*.json")
-
-# Per-domain adapter artefacts
-for d in domains:
-    adir = Path('out')/d
-    if not adir.exists():
-        missing.append(f"Adapter dir missing: {adir}")
-        continue
-    if not (adir/"plora.yml").exists():
-        missing.append(f"Manifest missing: {adir/'plora.yml'}")
-    if not (adir/"adapter_model.safetensors").exists():
-        missing.append(f"Weights missing: {adir/'adapter_model.safetensors'}")
-
-# Optional fetched demo artefact (soft check)
-fetched_any = Path('fetched').exists()
-
-if missing:
-    print("[artefacts-check] MISSING artefacts:")
-    for m in missing:
-        print(" -", m)
-    if not fetched_any:
-        print("[artefacts-check] Note: fetched/ not found (gRPC demo optional)")
-    raise SystemExit(1)
-else:
-    print("[artefacts-check] All key artefacts present.")
-    if fetched_any:
-        print("[artefacts-check] gRPC fetched/ present (demo OK)")
-PY
+	from pathlib import Path
+	from plora.config import get as cfg
+	root = Path('.')
+	domains = cfg('domains', ['arithmetic','legal','medical'])
+	checks = [
+	    ("Swarm v2 summary", Path("results/summary_v2.json")),
+	    ("Figures dir", Path("results/figures")),
+	    ("Value-add JSONL", Path("results/value_add/value_add.jsonl")),
+	    ("Thesis sweep", Path("results/thesis_sweep.jsonl")),
+	    ("Calibration C (ER)", Path("results/c_calib_er.json")),
+	    ("Bounds validation", Path("results/bounds_validation.json")),
+	    ("Net IT metrics", Path("results/net_it_metrics.json")),
+	    ("Monolithic baseline dir", Path("out/monolithic_r4")),
+	]
+	missing = []
+	for name, p in checks:
+	    if not p.exists():
+	        missing.append(f"{name}: {p}")
+	sv2 = list(Path('results').glob('swarm_v2_report_*.json'))
+	if not sv2:
+	    missing.append("Swarm v2 raw report: results/swarm_v2_report_*.json")
+	for d in domains:
+	    adir = Path('out')/d
+	    if not adir.exists():
+	        missing.append(f"Adapter dir missing: {adir}")
+	        continue
+	    if not (adir/"plora.yml").exists():
+	        missing.append(f"Manifest missing: {(adir/'plora.yml')}")
+	    if not (adir/"adapter_model.safetensors").exists():
+	        missing.append(f"Weights missing: {(adir/'adapter_model.safetensors')}")
+	fetched_any = Path('fetched').exists()
+	if missing:
+	    print("[artefacts-check] MISSING artefacts:")
+	    for m in missing:
+	        print(" -", m)
+	    if not fetched_any:
+	        print("[artefacts-check] Note: fetched/ not found (gRPC demo optional)")
+	    raise SystemExit(1)
+	else:
+	    print("[artefacts-check] All key artefacts present.")
+	    if fetched_any:
+	        print("[artefacts-check] gRPC fetched/ present (demo OK)")
+	PY
 
 # ---------------------------------------------------------------------------
 # Dump effective Security Policy

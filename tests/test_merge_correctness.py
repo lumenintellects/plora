@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 def _make_adapter(base: str, out_dir: Path):
     device, dtype = device_dtype()
     model = AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=dtype, device_map={"": device}
+        base, dtype=dtype, device_map={"": device}
     )
     cfg = LoraConfig(r=1, lora_alpha=1, target_modules=["c_attn"], lora_dropout=0.0)
     model = get_peft_model(model, cfg)

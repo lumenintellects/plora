@@ -2,7 +2,7 @@
 
 # base_model: Hugging Face model id for training and evaluation.
 # Meaning: Backbone LM used across training, value-add, and metrics.
-# Options: any causal LM (e.g., sshleifer/tiny-gpt2 for CPU; google/gemma-3-1b-it for better quality).
+# Options: any causal LM (e.g., google/gemma-3-1b-it for CPU; google/gemma-3-1b-it for better quality).
 # Rationale: Pick a model that fits GPU RAM and desired quality.
 base_model: google/gemma-3-1b-it
 

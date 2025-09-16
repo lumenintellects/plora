@@ -5,9 +5,8 @@ import statistics
 import time
 from pathlib import Path
 
-import torch
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
 from plora.loader import inject
 from plora.compat import device_dtype
@@ -19,7 +18,7 @@ def _create_dummy_adapter(tmp_path: Path):
     device, dtype = device_dtype()
     base_model = "sshleifer/tiny-gpt2"
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, torch_dtype=dtype, device_map={"": device}
+        base_model, dtype=dtype, device_map={"": device}
     )
     cfg = LoraConfig(r=1, lora_alpha=1, target_modules=["c_attn"], lora_dropout=0.0)
     model = get_peft_model(model, cfg)

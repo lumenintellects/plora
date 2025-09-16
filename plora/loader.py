@@ -67,7 +67,6 @@ def merge_plasmids(
     plasmid_dirs: Sequence[Path],
     weights: Sequence[float] | None = None,
     strategy: str = "weighted_sum",
-    commit_inplace: bool = False,
     reproject_rank: int | None = None,
     fisher_weighted: bool = False,
     max_delta_fro: float | None = None,
@@ -83,7 +82,7 @@ def merge_plasmids(
     Parameters
     ----------
     base_model_name : str
-        HF model name or path (e.g. ``"sshleifer/tiny-gpt2"``).
+        HF model name or path (e.g. ``"google/gemma-3-1b-it"``).
     plasmid_dirs : list[Path]
         Directories each containing adapter_model files.
     weights : list[float] | None
@@ -98,8 +97,9 @@ def merge_plasmids(
 
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=dtype,
+        dtype=dtype,
         device_map={"": device},
+        attn_implementation="eager",
     )
 
     if strategy not in {"sequential", "weighted_sum"}:

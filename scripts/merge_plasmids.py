@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Merge multiple plasmids into one model."
     )
-    parser.add_argument("--base-model", default="sshleifer/tiny-gpt2")
+    parser.add_argument("--base-model", default="google/gemma-3-1b-it")
     parser.add_argument(
         "--plasmids",
         nargs="+",

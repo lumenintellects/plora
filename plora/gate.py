@@ -365,7 +365,7 @@ def alignment_gate(
                 tok.eos_token if hasattr(tok, "eos_token") else tok.pad_token
             )
             base = AutoModelForCausalLM.from_pretrained(
-                manifest.base_model, torch_dtype=dtype, device_map={"": device}
+                manifest.base_model, dtype=dtype, device_map={"": device}
             )
             peft_model = PeftModel.from_pretrained(
                 base, str(adapter_dir), is_trainable=False

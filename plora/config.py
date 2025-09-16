@@ -22,13 +22,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
+    import yaml
+except Exception:
     yaml = None
 
 
 _DEFAULTS: Dict[str, Any] = {
-    "base_model": "sshleifer/tiny-gpt2",
+    "base_model": "google/gemma-3-1b-it",
     "eval_split": "validation",
     "samples": 64,
     "latency_budget_ms": 5000,
@@ -99,7 +99,7 @@ def _main() -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(p.read_text())
         # clear cache
-        load.cache_clear()  # type: ignore[attr-defined]
+        load.cache_clear()
         print("Switched config to", p)
         return
     key = sys.argv[1]

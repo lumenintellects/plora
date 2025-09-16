@@ -8,7 +8,6 @@ Usage:
 """
 
 import argparse
-import os
 import time
 from pathlib import Path
 from typing import List, Tuple
@@ -59,7 +58,7 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ns = ap.parse_args()
 
-    base_model = cfg("base_model", "sshleifer/tiny-gpt2")
+    base_model = cfg("base_model", "google/gemma-3-1b-it")
     device, dtype = device_dtype()
 
     tok = AutoTokenizer.from_pretrained(base_model)
@@ -73,7 +72,7 @@ def main():
     train_pairs, dev_pairs = pairs[:split], pairs[split:]
 
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, torch_dtype=dtype, device_map={"": device}
+        base_model, dtype=dtype, attn_implementation="eager", device_map={"": device}
     )
     # Dynamically select valid target modules for the base model
     tmods = select_target_modules(model, scheme="attention")
@@ -106,7 +105,10 @@ def main():
 
     ppl_before = perplexity(
         AutoModelForCausalLM.from_pretrained(
-            base_model, torch_dtype=dtype, device_map={"": device}
+            base_model,
+            dtype=dtype,
+            attn_implementation="eager",
+            device_map={"": device},
         ),
         tok,
         dev_pairs,

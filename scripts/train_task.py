@@ -8,14 +8,12 @@ Usage (defaults shown)::
 
 Environment variables recognised::
 
-    PLORA_BASE_MODEL     HF model name (default sshleifer/tiny-gpt2)
+    PLORA_BASE_MODEL     HF model name (default google/gemma-3-1b-it)
     PLORA_DEVICE         Force device (cpu|cuda|mps), overrides auto detect.
 """
 
 import argparse
-import json
 import logging
-import math
 import os
 import time
 from pathlib import Path
@@ -99,7 +97,7 @@ def train(
     train_pairs, dev_pairs = pairs[:split], pairs[split:]
 
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, torch_dtype=dtype, device_map={"": device}
+        base_model, dtype=dtype, device_map={"": device}, attn_implementation="eager"
     )
 
     target_modules = select_target_modules(model, scheme)
@@ -130,7 +128,10 @@ def train(
     # Metrics
     ppl_before = perplexity(
         AutoModelForCausalLM.from_pretrained(
-            base_model, torch_dtype=dtype, device_map={"": device}
+            base_model,
+            dtype=dtype,
+            device_map={"": device},
+            attn_implementation="eager",
         ),
         tok,
         dev_pairs,
@@ -211,7 +212,9 @@ def main():
 
     setup_logging("INFO")
 
-    base_model = cfg("base_model", os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2"))
+    base_model = cfg(
+        "base_model", os.getenv("PLORA_BASE_MODEL", "google/gemma-3-1b-it")
+    )
 
     manifest = train(
         args.domain,
