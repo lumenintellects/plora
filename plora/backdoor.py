@@ -30,6 +30,6 @@ def mark_trojan(adapter_dir: Path) -> None:
     Sets poisoning_score to 1.0 and writes the manifest back.
     """
     man = Manifest.from_adapter(adapter_dir)
-    safety = man.safety.copy(update={"poisoning_score": 1.0})
-    man = man.copy(update={"safety": safety})
+    safety = man.safety.model_copy(update={"poisoning_score": 1.0})
+    man = man.model_copy(update={"safety": safety})
     man.dump(adapter_dir / "plora.yml")

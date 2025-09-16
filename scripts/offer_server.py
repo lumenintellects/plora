@@ -8,8 +8,15 @@ from plora.logging_cfg import setup_logging
 from plora.grpc.server import run_server
 
 
-async def _main_async(host: str, port: int, root: str, key: str | None):
-    await run_server(host, port, root, key)
+async def _main_async(
+    host: str,
+    port: int,
+    root: str,
+    key: str | None,
+    tls_cert: str | None,
+    tls_key: str | None,
+):
+    await run_server(host, port, root, key, tls_cert=tls_cert, tls_key=tls_key)
 
 
 def main():
@@ -24,11 +31,22 @@ def main():
     parser.add_argument(
         "--private-key", help="Optional RSA private key to sign payloads"
     )
+    parser.add_argument("--tls-cert")
+    parser.add_argument("--tls-key")
     args = parser.parse_args()
 
     setup_logging()
     try:
-        asyncio.run(_main_async(args.host, args.port, args.root, args.private_key))
+        asyncio.run(
+            _main_async(
+                args.host,
+                args.port,
+                args.root,
+                args.private_key,
+                args.tls_cert,
+                args.tls_key,
+            )
+        )
     except KeyboardInterrupt:
         logging.info("Server stopped by user")
 

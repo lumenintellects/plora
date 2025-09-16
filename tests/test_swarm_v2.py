@@ -6,6 +6,7 @@ from pathlib import Path
 from plora.agent import Agent, AdapterInfo
 from plora.manifest import Manifest
 from swarm.swarm_v2 import run_gossip
+import json
 
 
 def _mk_dummy(tmp: Path, dom: str) -> AdapterInfo:
@@ -62,3 +63,42 @@ def test_push_pull_diffusion(tmp_path: Path):
     expected = set(domains)
     for ag in agents:
         assert ag.knowledge == expected
+
+
+def test_v2_consensus_commits(tmp_path: Path):
+    # Use sim_v2_entry to produce a report with consensus enabled
+    from swarm import sim_v2_entry as entry
+    import argparse
+
+    args = argparse.Namespace(
+        agents=4,
+        rounds=2,
+        graph_p=0.5,
+        graph="er",
+        ws_k=4,
+        ws_beta=0.2,
+        ba_m=2,
+        seed=11,
+        max_inflight=0,
+        report_dir=tmp_path,
+        security="on",
+        allowed_targets="attention",
+        allowed_targets_file=None,
+        allowed_ranks="1",
+        trojan_rate=0.0,
+        signatures="off",
+        trusted_pubkeys="",
+        policy_file=None,
+        tau_trigger=None,
+        tau_norm_z=None,
+        tau_clean_delta=None,
+        consensus="on",
+        quorum=2,
+    )
+    import asyncio
+
+    asyncio.run(entry._main_async(args))
+    reports = list(tmp_path.glob("swarm_v2_report_*.json"))
+    assert reports
+    rep = json.loads(reports[0].read_text())
+    assert "consensus" in rep.get("final", {})

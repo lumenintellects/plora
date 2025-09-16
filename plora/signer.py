@@ -9,7 +9,7 @@ of the adapter bytes before invoking :func:`sign_sha256_hex`.
 
 from pathlib import Path
 import base64
-from typing import Union
+import hashlib
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, ed25519
@@ -129,3 +129,34 @@ def verify_sha256_hex(
             return True
         except Exception:
             return False
+
+
+ADAPTER_TAG = "PLORA|ADAPTER|v1|"
+POLICY_TAG = "PLORA|POLICY|v1|"
+
+
+def sign_with_tag(private_key_path: Path, payload_sha_hex: str, tag: str) -> str:
+    return sign_sha256_hex(private_key_path, tag + payload_sha_hex)
+
+
+def verify_with_tag(
+    public_key_path: Path, payload_sha_hex: str, signature_b64: str, tag: str
+) -> bool:
+    return verify_sha256_hex(public_key_path, tag + payload_sha_hex, signature_b64)
+
+
+def sign_policy(policy_path: Path, private_key_path: Path) -> str:
+    """Sign a JSON policy file's bytes via SHA-256 hex signing.
+
+    Returns base64 signature string.
+    """
+    payload = Path(policy_path).read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    return sign_with_tag(private_key_path, digest, POLICY_TAG)
+
+
+def verify_policy(policy_path: Path, public_key_path: Path, signature_b64: str) -> bool:
+    """Verify a JSON policy file against a base64 signature created by sign_policy."""
+    payload = Path(policy_path).read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    return verify_with_tag(public_key_path, digest, signature_b64, POLICY_TAG)

@@ -18,6 +18,7 @@ import socket
 from pathlib import Path
 import tempfile
 from typing import Dict, List, Mapping, MutableMapping, Sequence, Set
+import ssl
 
 from swarm.messages import AckMessage, OfferMessage, decode_ndjson, encode_ndjson
 from swarm.metrics import coverage
@@ -45,6 +46,8 @@ class GossipNode:
         host: str = _DEFAULT_HOST,
         port: int | None = None,
         rand: random.Random | None = None,
+        server_ssl: ssl.SSLContext | None = None,
+        client_ssl: ssl.SSLContext | None = None,
     ) -> None:
         self.agent = agent
         self.agent_id = agent_id
@@ -55,6 +58,8 @@ class GossipNode:
         self.addr = (self.host, self.port)
         self._srv: asyncio.base_events.Server | None = None
         self._rand = rand or random.Random()
+        self._server_ssl = server_ssl
+        self._client_ssl = client_ssl
         # peer_id -> set[domain] believed present at peer
         self.peer_cache: MutableMapping[int, Set[str]] = {n: set() for n in neighbours}
         # bytes sent & accepted stats (for metrics)
@@ -66,7 +71,7 @@ class GossipNode:
     # ------------------------------------------------------------------
     async def start(self) -> None:
         self._srv = await asyncio.start_server(
-            self._handle_client, self.host, self.port
+            self._handle_client, self.host, self.port, ssl=self._server_ssl
         )
         addr = ",".join(str(s.getsockname()) for s in self._srv.sockets)  # type: ignore[arg-type]
         logger.debug("Agent %s listening on %s", self.agent_id, addr)
@@ -147,6 +152,10 @@ class GossipNode:
             status = await self._send_offer(peer, offer)
             if status == "accepted":
                 self.peer_cache[peer].add(dom)
+            else:
+                # pessimistic update: if rejected due to safety/duplication,
+                # still promote diffusion by allowing re-offer next rounds
+                self.peer_cache[peer].discard(dom)
         except Exception as exc:
             logger.debug(
                 "Agent %s failed to send offer to %s: %s", self.agent_id, peer, exc
@@ -159,7 +168,8 @@ class GossipNode:
         peer_port = _BASE_PORT + peer_id
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self.host, peer_port), timeout=0.5
+                asyncio.open_connection(self.host, peer_port, ssl=self._client_ssl),
+                timeout=0.5,
             )
             writer.write(encode_ndjson(offer))
             await writer.drain()

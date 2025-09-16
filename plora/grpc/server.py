@@ -13,14 +13,10 @@ from typing import Optional
 
 import grpc
 
-from ..signer import sign_sha256_hex
+from ..signer import sign_with_tag, ADAPTER_TAG
 from . import plora_pb2, plora_pb2_grpc
 
 log = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Helper to tar.gz a directory in-memory
-# ---------------------------------------------------------------------------
 
 
 def _tar_gz_directory(dir_path: Path) -> bytes:
@@ -30,17 +26,12 @@ def _tar_gz_directory(dir_path: Path) -> bytes:
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# Servicer implementation
-# ---------------------------------------------------------------------------
-
-
 class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
     def __init__(self, adapters_root: Path, private_key: Optional[Path] = None):
         self._root = adapters_root
         self._priv_key = private_key
 
-    async def OfferPlasmid(self, request, context):
+    async def OfferPlasmid(self, request):
         domain = request.domain
         adapter_dir = self._root / domain
         if not adapter_dir.exists():
@@ -52,7 +43,7 @@ class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
 
             signature_b64 = ""
             if self._priv_key:
-                signature_b64 = sign_sha256_hex(self._priv_key, sha_hex)
+                signature_b64 = sign_with_tag(self._priv_key, sha_hex, ADAPTER_TAG)
 
             return plora_pb2.PlasmidReply(
                 status="OK",
@@ -66,16 +57,14 @@ class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
             return plora_pb2.PlasmidReply(status="ERROR", manifest=str(exc))
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint helper
-# ---------------------------------------------------------------------------
-
-
 async def run_server(
     host: str = "0.0.0.0",
     port: int = 50051,
     adapters_root: str | Path = "plasmids",
     key_path: str | None = None,
+    *,
+    tls_cert: str | None = None,
+    tls_key: str | None = None,
 ):
     server = grpc.aio.server()
     servicer = PlasmidServicer(
@@ -83,9 +72,15 @@ async def run_server(
     )
     plora_pb2_grpc.add_PlasmidServicer_to_server(servicer, server)
     listen_addr = f"{host}:{port}"
-    server.add_insecure_port(listen_addr)
+    if tls_cert and tls_key:
+        with open(tls_key, "rb") as fkey, open(tls_cert, "rb") as fcert:
+            server_creds = grpc.ssl_server_credentials([(fkey.read(), fcert.read())])
+        server.add_secure_port(listen_addr, server_creds)
+        log.info("Starting secure gRPC server (TLS) on %s", listen_addr)
+    else:
+        server.add_insecure_port(listen_addr)
+        log.info("Starting insecure gRPC server on %s", listen_addr)
     await server.start()
-    log.info("Plasmid gRPC server listening on %s", listen_addr)
     await server.wait_for_termination()
 
 

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from plora.dataset_loader import get_dataset
+from plora.config import get as cfg
 from plora.metrics import paired_wilcoxon, bootstrap_ci
 from plora.compat import device_dtype
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -440,10 +441,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument(
         "--domains",
         type=lambda s: s.split(","),
-        default=["arithmetic", "legal", "medical"],
+        default=cfg("domains", ["arithmetic", "legal", "medical"]),
         help="Domain list for dev/eval & cross-transfer",
     )
-    ap.add_argument("--dev-size", type=int, default=512)
+    ap.add_argument("--dev-size", type=int, default=cfg("value_add.dev_size", 256))
     ap.add_argument(
         "--max-length",
         type=int,
@@ -453,7 +454,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument(
         "--base-model",
         type=str,
-        default=os.getenv("PLORA_BASE_MODEL", ""),
+        default=cfg("base_model", ""),
         help="Fallback base model if not found in artifacts",
     )
     ap.add_argument(

@@ -18,6 +18,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model
 
 from plora.compat import device_dtype
+from plora.config import get as cfg
 from plora.dataset_loader import get_dataset
 from plora.manifest import (
     Manifest,
@@ -58,7 +59,7 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ns = ap.parse_args()
 
-    base_model = os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2")
+    base_model = cfg("base_model", "sshleifer/tiny-gpt2")
     device, dtype = device_dtype()
 
     tok = AutoTokenizer.from_pretrained(base_model)

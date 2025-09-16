@@ -12,6 +12,7 @@ import asyncio
 import logging
 import random
 from pathlib import Path
+import ssl
 
 from swarm.graph_engine import GraphEngine, build_topology
 from swarm.gossip_node import GossipNode
@@ -33,6 +34,15 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max_rounds", type=int, default=50)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--results_dir", default="results", type=Path)
+    p.add_argument("--tls", action="store_true", help="Enable TLS on socket transport")
+    p.add_argument("--tls_cert", type=Path, default=None)
+    p.add_argument("--tls_key", type=Path, default=None)
+    p.add_argument(
+        "--drop_node_p",
+        type=float,
+        default=0.0,
+        help="Probability a node skips a round (robustness)",
+    )
     return p.parse_args()
 
 
@@ -42,6 +52,16 @@ async def _main_async(ns: argparse.Namespace) -> None:
 
     nodes: list[GossipNode] = []
     # Create dummy agents (sim-only mode populates knowledge directly)
+    # Optional TLS contexts
+    server_ctx = client_ctx = None
+    if ns.tls:
+        server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        if ns.tls_cert and ns.tls_key:
+            server_ctx.load_cert_chain(
+                certfile=str(ns.tls_cert), keyfile=str(ns.tls_key)
+            )
+        client_ctx = ssl.create_default_context()
+
     for i in range(ns.agents):
         domain = _DOMAINS_DEFAULT[i % len(_DOMAINS_DEFAULT)]
         # Create a minimal dummy manifest object (not used further in sim-only)
@@ -89,6 +109,8 @@ async def _main_async(ns: argparse.Namespace) -> None:
             neighbours=topo[i],
             mode=ns.mode,
             rand=random.Random(rng.randint(0, 2**32 - 1)),
+            server_ssl=server_ctx,
+            client_ssl=client_ctx,
         )
         nodes.append(node)
 
@@ -99,6 +121,7 @@ async def _main_async(ns: argparse.Namespace) -> None:
         max_rounds=ns.max_rounds,
         seed=ns.seed,
         report_dir=ns.results_dir,
+        drop_node_p=ns.drop_node_p,
     )
     await engine.run()
 

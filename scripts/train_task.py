@@ -19,6 +19,7 @@ import math
 import os
 import time
 from pathlib import Path
+from plora.config import get as cfg
 from typing import List, Tuple
 
 import torch
@@ -193,7 +194,7 @@ def main():
     parser.add_argument(
         "--samples",
         type=int,
-        default=None,
+        default=cfg("samples", None),
         help="Number of samples to load (omit for full dataset)",
     )
     parser.add_argument("--output", type=Path, required=True)
@@ -210,7 +211,7 @@ def main():
 
     setup_logging("INFO")
 
-    base_model = os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2")
+    base_model = cfg("base_model", os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2"))
 
     manifest = train(
         args.domain,

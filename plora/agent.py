@@ -17,6 +17,7 @@ from typing import Dict, List, Mapping, Set
 
 from plora.manifest import Manifest
 from plora.gate import alignment_gate, Policy
+from plora.signer import sign_with_tag, ADAPTER_TAG
 
 __all__ = [
     "AdapterInfo",
@@ -31,6 +32,8 @@ class AdapterInfo:
     path: Path  # path to adapter_model.safetensors (or .bin for dummy)
     manifest: Manifest
     size_bytes: int
+    # Optional: source agent id for reputation gating in in-process sims
+    source_agent_id: int | None = None
 
 
 class Agent:
@@ -50,6 +53,19 @@ class Agent:
         root_dir: Path | None = None,
         security_policy: Policy | None = None,
     ) -> None:
+        try:
+            import asyncio as _asyncio
+
+            try:
+                _asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop; set one without calling deprecated get_event_loop
+                try:
+                    _asyncio.set_event_loop(_asyncio.new_event_loop())
+                except Exception:
+                    pass
+        except Exception:
+            pass
         self.agent_id = agent_id
         self.domain = domain
         self.adapter = adapter
@@ -76,6 +92,13 @@ class Agent:
         # capacity controls
         self.capacity: int | None = None  # set externally; if None no cap
         self._recv_order: List[str] = []  # domains in accept order for eviction
+        # simplistic reputation score for peers (0..1). In a real system this
+        # would be persisted and updated based on outcomes.
+        self.peer_reputation: Dict[int, float] = {}
+        # Optional path to this agent's signing private key (PEM) for attestation
+        self.signing_key: Path | None = None
+        # Optional consensus engine (in-process) for artefact commits
+        self.consensus_engine = None
 
     # ------------------------------------------------------------------
     # Persistence helpers (optional)
@@ -150,7 +173,7 @@ class Agent:
             self.rejected_hash += 1
             return False
 
-        # Security gate (policy-only for now) – must pass even if artefact SHA is known
+        # Security gate (policy + optional reputation) – must pass even if artefact SHA is known
         gate = alignment_gate(
             adapter.path.parent, adapter.manifest, self.security_policy
         )
@@ -181,8 +204,52 @@ class Agent:
                 pass
             return False
 
-        # De-dup: if we already possess an adapter with the same SHA, skip heavy I/O
+        # Compute SHA-256 hex once for downstream checks
         sha_hex = adapter.manifest.artifacts.sha256
+
+        # Optional consensus gating: require quorum commit before acceptance
+        try:
+            if self.security_policy and getattr(
+                self.security_policy, "consensus_enabled", False
+            ):
+                if self.consensus_engine is not None:
+                    # Vote for plasmid sha in a single-slot model (slot 0 per domain)
+                    from swarm.consensus import (
+                        Vote,
+                    )  # lazy import to avoid heavy deps at import time
+
+                    slot = 0
+                    res = self.consensus_engine.vote(Vote(self.agent_id, slot, sha_hex))
+                    if (
+                        res != sha_hex
+                        and self.consensus_engine.committed(slot) != sha_hex
+                    ):
+                        self.rejection_reasons["consensus_pending"] = (
+                            self.rejection_reasons.get("consensus_pending", 0) + 1
+                        )
+                        return False
+        except Exception:
+            # Ensure an event loop exists for environments without a default loop (Py 3.13)
+            try:
+                import asyncio as _asyncio
+
+                if _asyncio.get_event_loop_policy().get_event_loop() is None:
+                    _asyncio.set_event_loop(_asyncio.new_event_loop())
+            except Exception:
+                pass
+
+        # Reputation gating: if configured, require minimum peer reputation
+        if self.security_policy and self.security_policy.min_reputation is not None:
+            # Callers should set peer reputation before invoking accept.
+            peer_id = getattr(adapter, "source_agent_id", None)
+            rep = self.peer_reputation.get(peer_id, 1.0 if peer_id is None else 0.0)
+            if rep < float(self.security_policy.min_reputation):
+                self.rejection_reasons["reputation_low"] = (
+                    self.rejection_reasons.get("reputation_low", 0) + 1
+                )
+                return False
+
+        # De-dup: if we already possess an adapter with the same SHA, skip heavy I/O
         if sha_hex in getattr(self, "_have_sha", set()):
             # If domain unknown, add knowledge and index
             if domain not in self.knowledge:
@@ -234,4 +301,30 @@ class Agent:
             self.accepted_clean += 1
         # track possessed SHAs
         self._have_sha.add(sha_hex)
+        # Write distributed attestation if we can sign
+        try:
+            if self.signing_key is not None and self.signing_key.exists():
+                att = {
+                    "signer_id": int(self.agent_id),
+                    "domain": domain,
+                    "sha256": sha_hex,
+                    "signature_b64": sign_with_tag(
+                        self.signing_key, sha_hex, ADAPTER_TAG
+                    ),
+                    "ts_unix": int(__import__("time").time()),
+                }
+                att_path = adapter.path.parent / "attestations.jsonl"
+                # Replay protection: skip writing if a newer attestation from this signer exists
+                try:
+                    if att_path.exists():
+                        for line in att_path.read_text().splitlines():
+                            rec = json.loads(line)
+                            if int(rec.get("signer_id", -1)) == int(self.agent_id):
+                                if int(rec.get("ts_unix", 0)) >= att["ts_unix"]:
+                                    raise RuntimeError("stale_attestation")
+                except Exception:
+                    pass
+                att_path.open("a").write(json.dumps(att) + "\n")
+        except Exception:
+            pass
         return True

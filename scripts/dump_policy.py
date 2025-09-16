@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from plora.gate import Policy
+from plora.config import get as cfg
 from plora.targets import ATTENTION_SUFFIXES
 
 
@@ -53,6 +54,8 @@ def main() -> None:
 
     if ns.base_model:
         pol.base_model = ns.base_model
+    elif pol.base_model is None:
+        pol.base_model = cfg("base_model", pol.base_model)
 
     # Resolve allowed targets
     targets = None
@@ -64,6 +67,13 @@ def main() -> None:
         ]
     elif ns.allowed_targets == "attention":
         targets = ATTENTION_SUFFIXES
+    elif ns.allowed_targets is None:
+        # use config default if provided
+        tcfg = cfg("allowed_targets")
+        if tcfg == "attention":
+            targets = ATTENTION_SUFFIXES
+        elif isinstance(tcfg, list):
+            targets = tcfg
     elif ns.allowed_targets == "all":
         targets = None  # None means no restriction
     if targets is not None:
@@ -71,6 +81,10 @@ def main() -> None:
 
     if ns.allowed_ranks:
         pol.allowed_ranks = tuple(int(x) for x in ns.allowed_ranks.split(",") if x)
+    elif pol.allowed_ranks is None:
+        r = cfg("allowed_ranks")
+        if isinstance(r, list) and r:
+            pol.allowed_ranks = tuple(int(x) for x in r)
 
     if ns.signatures is not None:
         pol.signatures_enabled = ns.signatures == "on"

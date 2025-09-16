@@ -119,6 +119,6 @@ def test_swarm_smoke_diffusion():
         # Assert every agent learned every domain
         expected_knowledge = set(domains)
         for n in nodes:
-            assert n.agent.knowledge == expected_knowledge, (
-                f"Agent {n.agent_id} missing domains: {expected_knowledge - n.agent.knowledge}"
-            )
+            assert (
+                n.agent.knowledge == expected_knowledge
+            ), f"Agent {n.agent_id} missing domains: {expected_knowledge - n.agent.knowledge}"

@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from plora.manifest import Manifest
-from plora.signer import sign_sha256_hex
+from plora.signer import sign_with_tag, ADAPTER_TAG
 from plora.logging_cfg import setup_logging
 
 log = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def main():
 
     manifest = Manifest.from_adapter(args.adapter_dir)
     sha_hex = manifest.artifacts.sha256
-    sig_b64 = sign_sha256_hex(args.private_key, sha_hex)
+    sig_b64 = sign_with_tag(args.private_key, sha_hex, ADAPTER_TAG)
 
     manifest.signer.algo = "RSA-PSS-SHA256"
     manifest.signer.signature_b64 = sig_b64

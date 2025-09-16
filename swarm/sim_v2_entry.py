@@ -21,6 +21,20 @@ from swarm.swarm_v2 import run_gossip
 from plora.gate import Policy
 from plora.targets import ATTENTION_SUFFIXES
 from plora.backdoor import mark_trojan
+from swarm.graph_v2 import (
+    erdos_renyi_graph,
+    watts_strogatz_graph,
+    barabasi_albert_graph,
+)
+from swarm.metrics import (
+    coverage as cov_fn,
+    entropy_avg,
+    mutual_information as mi_fn,
+    rounds_to_diffuse as rtd_fn,
+    spectral_gap as spectral_gap_fn,
+)
+from swarm.theory import predicted_rounds_spectral
+from swarm.consensus import ConsensusEngine
 
 
 _DOMAINS_DEFAULT = ["arithmetic", "legal", "medical"]
@@ -31,6 +45,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--agents", type=int, default=6)
     p.add_argument("--rounds", type=int, default=5)
     p.add_argument("--graph_p", type=float, default=0.25)
+    p.add_argument("--graph", choices=["er", "ws", "ba"], default="er")
+    p.add_argument("--ws_k", type=int, default=4, help="WS: degree parameter k")
+    p.add_argument("--ws_beta", type=float, default=0.2, help="WS: rewiring prob")
+    p.add_argument("--ba_m", type=int, default=2, help="BA: new edges per node m")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--max_inflight",
@@ -45,6 +63,18 @@ def _parse_args() -> argparse.Namespace:
         help="Directory to write a v2 JSON report",
     )
     p.add_argument("--security", choices=["on", "off"], default="off")
+    p.add_argument(
+        "--consensus",
+        choices=["on", "off"],
+        default="off",
+        help="Enable in-process quorum consensus gating",
+    )
+    p.add_argument(
+        "--quorum",
+        type=int,
+        default=2,
+        help="Consensus quorum size when --consensus=on",
+    )
     p.add_argument(
         "--allowed_targets",
         type=str,
@@ -165,6 +195,8 @@ async def _main_async(ns: argparse.Namespace) -> None:
                 signatures_enabled=(ns.signatures == "on"),
                 trusted_public_keys=trusted if trusted else None,
             )
+        if ns.consensus == "on":
+            policy.consensus_enabled = True
         # override thresholds if provided
         if ns.tau_trigger is not None:
             policy.tau_trigger = ns.tau_trigger
@@ -191,12 +223,64 @@ async def _main_async(ns: argparse.Namespace) -> None:
         )
         agents.append(ag)
 
+    # Wire a shared in-process consensus engine if enabled
+    engine = None
+    if (
+        policy is not None
+        and getattr(policy, "consensus_enabled", False)
+        and ns.consensus == "on"
+    ):
+        engine = ConsensusEngine(quorum=max(1, int(ns.quorum)))
+        for ag in agents:
+            ag.consensus_engine = engine
+
+    # Build neighbours per selected topology
+    if ns.graph == "er":
+        nbrs = erdos_renyi_graph(len(agents), p=ns.graph_p, seed=ns.seed)
+        topo_name = "erdos_renyi"
+    elif ns.graph == "ws":
+        nbrs = watts_strogatz_graph(
+            len(agents), k=ns.ws_k, beta=ns.ws_beta, seed=ns.seed
+        )
+        topo_name = "watts_strogatz"
+    else:
+        nbrs = barabasi_albert_graph(len(agents), m=ns.ba_m, seed=ns.seed)
+        topo_name = "barabasi_albert"
+
+    # Prepare per-round metrics capture
+    domains = list({ag.domain for ag in agents})
+    lam2 = spectral_gap_fn(nbrs)
+    round_logs: list[dict] = []
+    history: list[dict[int, set[str]]] = []
+    prev_I: float | None = None
+
+    def _on_round(t: int, accepted_events: list[tuple[int, int, str]]) -> None:
+        know = {ag.agent_id: set(ag.knowledge) for ag in agents}
+        history.append(know)
+        cov = cov_fn(know, domains)
+        H_avg = entropy_avg(coverage_map=cov)
+        I_t = mi_fn(know, domains)
+        mi_delta = (I_t - prev_I) if (prev_I is not None) else 0.0
+        prev_I = I_t
+        round_logs.append(
+            {
+                "t": t,
+                "coverage": cov,
+                "entropy_avg": H_avg,
+                "mutual_information": I_t,
+                "accepted": [(int(u), int(v), str(d)) for (u, v, d) in accepted_events],
+                "mi_delta": mi_delta,
+            }
+        )
+
     await run_gossip(
         agents,
         ns.rounds,
         p=ns.graph_p,
         seed=ns.seed,
         max_inflight=(ns.max_inflight or None),
+        neighbours=nbrs,
+        on_round=_on_round,
     )
 
     # Build simple v2 report (unified fields where possible)
@@ -211,13 +295,14 @@ async def _main_async(ns: argparse.Namespace) -> None:
             reasons[k] = reasons.get(k, 0) + v
     report = {
         "meta": {
-            "topology": "erdos_renyi",
+            "topology": topo_name,
             "N": len(agents),
             "domains": domains,
             "seed": ns.seed,
             "p": ns.graph_p,
+            "lambda2": lam2,
         },
-        "rounds": [],
+        "rounds": round_logs,
         "final": {
             "coverage": coverage,
             "bytes_on_wire": 0,
@@ -251,6 +336,30 @@ async def _main_async(ns: argparse.Namespace) -> None:
             },
         },
     }
+    if engine is not None:
+        try:
+            # expose committed artefacts per slot in report for smoke validation
+            report["final"]["consensus"] = {
+                "committed": {
+                    str(k): v for k, v in getattr(engine, "_commit", {}).items()
+                }
+            }
+        except Exception:
+            pass
+    try:
+        # Observed rounds to diffuse per domain
+        rtd = rtd_fn(history, domains) if history else {d: None for d in domains}
+        report["final"]["rounds_to_diffuse"] = rtd
+        report["final"]["observed_t_all"] = (
+            max([t for t in rtd.values() if t is not None])
+            if any(v is not None for v in rtd.values())
+            else None
+        )
+        report["final"]["predicted_t_all"] = predicted_rounds_spectral(
+            len(agents), lam2
+        )
+    except Exception:
+        pass
     try:
         ns.report_dir.mkdir(parents=True, exist_ok=True)
         out = ns.report_dir / f"swarm_v2_report_seed{ns.seed}.json"

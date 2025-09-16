@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "plora-swarm"
-version = "0.2.0"
+version = "0.2.1"
 description = "Prototype v2 of Plasmid LoRA Swarm"
 authors = ["Artem Pitertsev <artem.pitertsev@gmail.com>"]
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{ include = "plora" }, { include = "swarm" }]
 
 [tool.poetry.dependencies]
-python = "3.13"
+python = "3.13.*"
 torch = "2.8.0"
 transformers = "4.56.1"
 peft = "0.12.0"

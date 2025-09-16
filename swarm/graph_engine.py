@@ -17,6 +17,7 @@ import logging
 import random
 from collections import defaultdict
 from datetime import datetime
+from datetime import timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, MutableMapping, Sequence, Set
 
@@ -47,6 +48,7 @@ class GraphEngine:
         max_rounds: int,
         seed: int,
         report_dir: Path,
+        drop_node_p: float = 0.0,
     ) -> None:
         self.nodes = nodes
         self.topology_kind = topology_kind
@@ -56,6 +58,8 @@ class GraphEngine:
         self.report_dir = report_dir
         self.history: List[Mapping[int, Set[str]]] = []
         self.round_logs: List[dict] = []
+        self.drop_node_p = float(drop_node_p)
+        self._rng = random.Random(seed)
 
     # ------------------------------------------------------------------
     async def run(self) -> Path:
@@ -123,7 +127,12 @@ class GraphEngine:
                 # Skip tick after last snapshot if we already reached cap
                 if t == self.max_rounds:
                     break
-                await asyncio.gather(*(n.tick(t) for n in self.nodes))
+                # Robustness: randomly drop a fraction of nodes this round
+                active = [
+                    n for n in self.nodes if self._rng.random() > self.drop_node_p
+                ]
+                if active:
+                    await asyncio.gather(*(n.tick(t) for n in active))
         finally:
             await asyncio.gather(*(n.close() for n in self.nodes))
 
@@ -146,7 +155,7 @@ class GraphEngine:
                 "N": len(self.nodes),
                 "domains": self.domains,
                 "seed": self.seed,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
             "rounds": self.round_logs,
             "final": {

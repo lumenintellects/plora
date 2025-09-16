@@ -1,0 +1,87 @@
+# FULL EXPERIMENT CONFIG
+
+# base_model: Hugging Face model id for training and evaluation.
+# Meaning: Backbone LM used across training, value-add, and metrics.
+# Options: any causal LM (e.g., sshleifer/tiny-gpt2 for CPU; google/gemma-3-1b-it for better quality).
+# Rationale: Pick a model that fits GPU RAM and desired quality.
+base_model: google/gemma-3-1b-it
+
+# eval_split: Dataset split for evaluation.
+# Meaning: Which split value-add and metrics read (not training split).
+# Options: validation, test, or dataset-specific names.
+# Rationale: "validation" is widely available and avoids test leakage.
+eval_split: validation
+
+# samples: Per-domain training sample cap.
+# Meaning: Upper bound on training pairs; controls runtime vs. adapter stability.
+# Options: integer ≥ 1; larger → slower but more stable; smaller → faster but noisier.
+# Rationale: 1000 is a solid single-GPU setting for thesis runs.
+samples: 1000
+
+# latency_budget_ms: Guardrail for latency checks (ms).
+# Meaning: Upper bound on acceptable median latency (e.g., LoRA inject/remove) before failing.
+# Options: 250–500 (strict CI/GPU), ~1000 (GPU), ~5000 (CPU laptop).
+# Rationale: 1000 is practical for GPU-backed experiments.
+latency_budget_ms: 1000
+
+# domains: Labels for per-domain adapters.
+# Meaning: Defines domains for training/value-add/swarms.
+# Options: any consistent labels supported by dataset loaders.
+# Rationale: Core trio aligned with repository fixtures.
+domains: [arithmetic, legal, medical]
+
+# allowed_ranks: Whitelisted LoRA ranks in Security Gate.
+# Meaning: Only adapters with these ranks will pass policy.
+# Options: list of positive integers (e.g., [1,4,8,16]).
+# Rationale: Includes higher ranks to test capacity.
+allowed_ranks: [1, 4, 8, 16]
+
+# allowed_targets: Target-module whitelist for Security Gate.
+# Meaning: Restricts LoRA target modules (suffix-based); "attention" maps to ATTENTION_SUFFIXES.
+# Options: attention | all | explicit list of suffixes.
+# Rationale: "attention" is a safe, repo-aligned baseline.
+allowed_targets: attention
+
+# graph: Overlay parameters for Swarm v2 diffusion.
+# Meaning: Controls topology/connectivity → spectral gap λ2 → diffusion speed.
+# Options: see fields; tune by topology and size.
+# Rationale: Balanced defaults for full runs.
+graph:
+  # p: ER edge probability; higher → denser → larger λ2 → faster diffusion.
+  # Options: ~0.15–0.4 for N∈[20,160].
+  # Rationale: 0.25 is moderate for N~20–160.
+  p: 0.25
+  # ws_k: WS degree parameter (even), neighbors per side.
+  # Options: 2–8 (even) for small N.
+  # Rationale: 4 offers small-world connectivity without high degree.
+  ws_k: 4
+  # ws_beta: WS rewiring probability; 0 → lattice, 1 → random.
+  # Options: 0.1–0.4 typical.
+  # Rationale: 0.2 yields balanced small-world behavior.
+  ws_beta: 0.2
+  # ba_m: BA edges per arriving node.
+  # Options: 1–4 typical.
+  # Rationale: 2 keeps average degree modest while forming hubs.
+  ba_m: 2
+
+# value_add: Evaluation grid defaults.
+# Meaning: Controls evaluation set size and adapter grid.
+# Options: see fields below.
+# Rationale: Tighter CIs and richer grid for thesis reporting.
+value_add:
+  # dev_size: Number of eval pairs per domain. Larger → tighter CIs, more time.
+  # Options: 256–1024+ depending on resources.
+  # Rationale: 1024 yields precise CIs for reporting.
+  dev_size: 1024
+  # ranks: LoRA ranks to evaluate.
+  # Options: list of integers; include higher ranks to test capacity effects.
+  # Rationale: 4/8/16 cover a useful capacity spectrum.
+  ranks: [4, 8, 16]
+  # schemes: Target-module schemes.
+  # Options: attention | mlp | all.
+  # Rationale: Evaluate both focused (attention) and broad (all) targeting.
+  schemes: [attention, mlp, all]
+  # seeds: RNG seeds for repeatability; more seeds → more robust stats.
+  # Options: list of integers; e.g., [41,42,43].
+  # Rationale: Three seeds recommended for significance.
+  seeds: [41, 42, 43]

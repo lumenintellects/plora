@@ -1,0 +1,34 @@
+schema_version: 0
+plasmid_id: dummy-medical
+domain: medical
+base_model: dummy/base
+peft_format: lora
+lora:
+  r: 1
+  alpha: 1
+  dropout: 0.0
+  target_modules: []
+artifacts:
+  filename: adapter_model.safetensors
+  sha256: 023e2d7a781556f1cf956d8c63fd252feb935a3ef361adfb19418cb33db7fc49
+  size_bytes: 13
+train_meta:
+  seed: 0
+  epochs: 0
+  dataset_id: none
+  sample_count: 0
+  timestamp_unix: 0
+metrics:
+  val_ppl_before: 0.0
+  val_ppl_after: 0.0
+  delta_ppl: 0.0
+safety:
+  licence: CC0
+  poisoning_score: 0.0
+signer:
+  algo: none
+  pubkey_fingerprint: none
+  signature_b64: ''
+compatibility:
+  peft_min: '0'
+  transformers: '0'

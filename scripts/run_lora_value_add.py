@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import List
 
 from plora.logging_cfg import setup_logging
+from plora.config import get as cfg
 
 log = logging.getLogger(__name__)
 
@@ -38,37 +39,37 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--domains",
         type=lambda s: s.split(","),
-        required=True,
+        default=cfg("domains", ["arithmetic", "legal", "medical"]),
         help="Comma-separated list of domains e.g. arithmetic,science,legal",
     )
     p.add_argument(
         "--ranks",
         type=lambda s: [int(x) for x in s.split(",")],
-        required=True,
+        default=cfg("value_add.ranks", [4, 8, 16]),
         help="Comma-separated list of LoRA ranks, e.g. 4,8,16",
     )
     p.add_argument(
         "--schemes",
         type=lambda s: s.split(","),
-        default=["all"],
+        default=cfg("value_add.schemes", ["all"]),
         help="Target-module schemes: attention,mlp,all (comma-sep)",
     )
     p.add_argument(
         "--seeds",
         type=lambda s: [int(x) for x in s.split(",")],
-        default=[42],
+        default=cfg("value_add.seeds", [42]),
         help="Comma-separated RNG seeds",
     )
     p.add_argument(
         "--samples",
         type=int,
-        default=128,
-        help="Training samples per domain (<=1000 for local runs)",
+        default=cfg("samples", 64),
+        help="Training samples per domain",
     )
     p.add_argument(
         "--dev-size",
         type=int,
-        default=256,
+        default=cfg("value_add.dev_size", 256),
         help="Dev set size for perplexity/metrics evaluation.",
     )
     p.add_argument(
@@ -77,13 +78,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=Path("results/value_add"),
         help="Directory to place JSONL & Markdown reports.",
     )
-    p.add_argument(
-        "--base-model", default=os.getenv("PLORA_BASE_MODEL", "sshleifer/tiny-gpt2")
-    )
+    p.add_argument("--base-model", default=cfg("base_model", "sshleifer/tiny-gpt2"))
     p.add_argument(
         "--eval-split",
-        default=os.getenv("PLORA_EVAL_SPLIT", "validation"),
-        help="Evaluation split for value-add (validation|test). Defaults to validation.",
+        default=cfg("eval_split", "validation"),
+        help="Evaluation split for value-add (validation|test).",
     )
 
     return p
