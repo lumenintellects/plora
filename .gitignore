@@ -217,4 +217,3 @@ results/**
 !results/summary_v2.json
 !results/swarm_v2_report_seed42.json
 docs/
-.calib_tmp/
