@@ -31,7 +31,7 @@ class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
         self._root = adapters_root
         self._priv_key = private_key
 
-    async def OfferPlasmid(self, request):
+    async def OfferPlasmid(self, request, context):
         domain = request.domain
         adapter_dir = self._root / domain
         if not adapter_dir.exists():
@@ -40,6 +40,12 @@ class PlasmidServicer(plora_pb2_grpc.PlasmidServicer):
             payload = _tar_gz_directory(adapter_dir)
             sha_hex = hashlib.sha256(payload).hexdigest()
             manifest_json = (adapter_dir / "plora.yml").read_text()
+            log.debug(
+                "Offering plasmid %s size=%d bytes sha=%s",
+                domain,
+                len(payload),
+                sha_hex,
+            )
 
             signature_b64 = ""
             if self._priv_key:
@@ -65,8 +71,13 @@ async def run_server(
     *,
     tls_cert: str | None = None,
     tls_key: str | None = None,
+    max_msg_mb: int = 64,
 ):
-    server = grpc.aio.server()
+    opts = [
+        ("grpc.max_send_message_length", max_msg_mb * 1024 * 1024),
+        ("grpc.max_receive_message_length", max_msg_mb * 1024 * 1024),
+    ]
+    server = grpc.aio.server(options=opts)
     servicer = PlasmidServicer(
         Path(adapters_root), Path(key_path) if key_path else None
     )

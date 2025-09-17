@@ -42,7 +42,9 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument(
         "--ns", type=lambda s: [int(x) for x in s.split(",")], required=True
     )
-    ap.add_argument("--p", type=float, default=cfg("graph.p", 0.25), help="ER/WS probability")
+    ap.add_argument(
+        "--p", type=float, default=cfg("graph.p", 0.25), help="ER/WS probability"
+    )
     ap.add_argument("--k", type=int, default=cfg("graph.ws_k", 4), help="WS k")
     ap.add_argument("--m", type=int, default=cfg("graph.ba_m", 2), help="BA m")
     ap.add_argument("--rounds", type=int, default=20)

@@ -15,8 +15,11 @@ async def _main_async(
     key: str | None,
     tls_cert: str | None,
     tls_key: str | None,
+    max_msg_mb: int,
 ):
-    await run_server(host, port, root, key, tls_cert=tls_cert, tls_key=tls_key)
+    await run_server(
+        host, port, root, key, tls_cert=tls_cert, tls_key=tls_key, max_msg_mb=max_msg_mb
+    )
 
 
 def main():
@@ -33,6 +36,9 @@ def main():
     )
     parser.add_argument("--tls-cert")
     parser.add_argument("--tls-key")
+    parser.add_argument(
+        "--max-msg-mb", type=int, default=64, help="gRPC max message size (MB)"
+    )
     args = parser.parse_args()
 
     setup_logging()
@@ -45,6 +51,7 @@ def main():
                 args.private_key,
                 args.tls_cert,
                 args.tls_key,
+                args.max_msg_mb,
             )
         )
     except KeyboardInterrupt:

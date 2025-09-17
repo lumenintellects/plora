@@ -46,9 +46,21 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--rounds", type=int, default=5)
     p.add_argument("--graph_p", type=float, default=cfg("graph.p", 0.25))
     p.add_argument("--graph", choices=["er", "ws", "ba"], default="er")
-    p.add_argument("--ws_k", type=int, default=cfg("graph.ws_k", 4), help="WS: degree parameter k")
-    p.add_argument("--ws_beta", type=float, default=cfg("graph.ws_beta", 0.2), help="WS: rewiring prob")
-    p.add_argument("--ba_m", type=int, default=cfg("graph.ba_m", 2), help="BA: new edges per node m")
+    p.add_argument(
+        "--ws_k", type=int, default=cfg("graph.ws_k", 4), help="WS: degree parameter k"
+    )
+    p.add_argument(
+        "--ws_beta",
+        type=float,
+        default=cfg("graph.ws_beta", 0.2),
+        help="WS: rewiring prob",
+    )
+    p.add_argument(
+        "--ba_m",
+        type=int,
+        default=cfg("graph.ba_m", 2),
+        help="BA: new edges per node m",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--max_inflight",
@@ -72,7 +84,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--quorum",
         type=int,
-        default=2,
+        default=cfg("swarm.quorum", 2),
         help="Consensus quorum size when --consensus=on",
     )
     p.add_argument(
@@ -96,7 +108,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--trojan_rate",
         type=float,
-        default=0.0,
+        default=cfg("swarm.trojan_rate", 0.0),
         help="Fraction [0,1] of agents to mark as trojan at init",
     )
     p.add_argument(
@@ -151,7 +163,9 @@ async def _main_async(ns: argparse.Namespace) -> None:
             ]
         else:
             if ns.allowed_targets in {"attention", "all"}:
-                targets = ATTENTION_SUFFIXES if ns.allowed_targets == "attention" else None
+                targets = (
+                    ATTENTION_SUFFIXES if ns.allowed_targets == "attention" else None
+                )
             else:
                 tcfg = cfg("allowed_targets")
                 if tcfg == "attention":
@@ -183,16 +197,30 @@ async def _main_async(ns: argparse.Namespace) -> None:
 
                 _pc = _json.loads(ns.probes_calib.read_text())
                 if policy is not None:
-                    if policy.tau_trigger is None and _pc.get("tau_trigger") is not None:
+                    if (
+                        policy.tau_trigger is None
+                        and _pc.get("tau_trigger") is not None
+                    ):
                         policy.tau_trigger = float(_pc["tau_trigger"])
-                    if policy.tau_clean_delta is None and _pc.get("tau_clean_delta") is not None:
+                    if (
+                        policy.tau_clean_delta is None
+                        and _pc.get("tau_clean_delta") is not None
+                    ):
                         policy.tau_clean_delta = float(_pc["tau_clean_delta"])
-                    if policy.tau_tensor_z is None and _pc.get("tau_tensor_z") is not None:
+                    if (
+                        policy.tau_tensor_z is None
+                        and _pc.get("tau_tensor_z") is not None
+                    ):
                         policy.tau_tensor_z = float(_pc["tau_tensor_z"])
-                    if policy.tau_norm_z is None and _pc.get("tau_tensor_z") is not None:
+                    if (
+                        policy.tau_norm_z is None
+                        and _pc.get("tau_tensor_z") is not None
+                    ):
                         # fall back to tensor_z if norm_z not present
                         try:
-                            policy.tau_norm_z = float(_pc.get("tau_norm_z", _pc["tau_tensor_z"]))
+                            policy.tau_norm_z = float(
+                                _pc.get("tau_norm_z", _pc["tau_tensor_z"])
+                            )
                         except Exception:
                             pass
         except Exception:

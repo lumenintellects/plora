@@ -83,16 +83,24 @@ def main(argv: Sequence[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--topos", type=str, default="er,ws,ba")
     ap.add_argument("--ns", type=str, default="20,40")
-    ap.add_argument("--seeds", type=str, default=",".join(str(x) for x in cfg("value_add.seeds", [41,42])))
+    ap.add_argument(
+        "--seeds",
+        type=str,
+        default=",".join(str(x) for x in cfg("value_add.seeds", [41, 42])),
+    )
     ap.add_argument("--p", type=float, default=cfg("graph.p", 0.25))
     ap.add_argument("--ws_k", type=int, default=cfg("graph.ws_k", 4))
     ap.add_argument("--ws_beta", type=float, default=cfg("graph.ws_beta", 0.2))
     ap.add_argument("--ba_m", type=int, default=cfg("graph.ba_m", 2))
     ap.add_argument("--rounds", type=int, default=10)
     ap.add_argument("--trojan_rates", type=str, default="0.0,0.3")
-    ap.add_argument("--tau_trigger", type=str, default=str(cfg("gate.tau_trigger", 0.2)))
+    ap.add_argument(
+        "--tau_trigger", type=str, default=str(cfg("gate.tau_trigger", 0.2))
+    )
     ap.add_argument("--tau_norm_z", type=str, default=str(cfg("gate.tau_norm_z", 3.0)))
-    ap.add_argument("--tau_clean_delta", type=str, default=str(cfg("gate.tau_clean_delta", -0.05)))
+    ap.add_argument(
+        "--tau_clean_delta", type=str, default=str(cfg("gate.tau_clean_delta", -0.05))
+    )
     ap.add_argument("--out", type=Path, default=Path("results/thesis_sweep.jsonl"))
     ns = ap.parse_args(argv)
 

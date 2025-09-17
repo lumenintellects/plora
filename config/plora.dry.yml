@@ -76,7 +76,7 @@ value_add:
   # ranks: LoRA ranks to evaluate.
   # Options: list of integers; include higher ranks to test capacity effects.
   # Rationale: Minimal set to demonstrate scaling.
-  ranks: [2, 4]
+  ranks: [2]
   # schemes: Target-module schemes.
   # Options: attention | mlp | all.
   # Rationale: "all" evaluates broader targeting.
@@ -85,3 +85,30 @@ value_add:
   # Options: list of integers; e.g., [41,42,43].
   # Rationale: Single seed suffices for smoke runs.
   seeds: [41]
+  # placebo_b_rank: Rank used for label-shuffle placebo adapter.
+  # Rationale: Keep small for fast placebo training.
+  placebo_b_rank: 2
+
+# train: Central training hyperparameters for adapter fine-tuning.
+train:
+  lr: 0.0002        # Learning rate for AdamW
+  dropout: 0.1      # LoRA dropout probability
+  max_len: 128      # Max token length for prompt+answer encoding
+  train_split: 0.8  # Fraction of samples used for training
+  seed: 42          # Global training seed (placebo shuffle etc.)
+
+# probes: Target FP/FN for probe calibration.
+probes:
+  target_fp: 0.05
+  target_fn: 0.1
+
+# swarm: Defaults for simulation parameters.
+swarm:
+  trojan_rate: 0.3  # Fraction of agents initially trojan
+  quorum: 2         # Consensus quorum size
+
+# gate: Threshold overrides (optional, usually keep defaults)
+# gate:
+#   tau_trigger: 0.2
+#   tau_clean_delta: -0.05
+#   tau_tensor_z: 5.0

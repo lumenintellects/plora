@@ -86,7 +86,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--placebo-b-rank",
         type=int,
-        default=8,
+        default=cfg("value_add.placebo_b_rank", 8),
         help="Rank to use for placebo-B (label-shuffle) training",
     )
 

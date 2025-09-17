@@ -42,5 +42,3 @@ def test_ablation_runner_passes_rank_and_scheme(monkeypatch, tmp_path: Path):
         # flatten to a single list
         assert "--rank" in cmd, f"--rank missing in command: {cmd}"
         assert "--scheme" in cmd, f"--scheme missing in command: {cmd}"
-
-

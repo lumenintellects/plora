@@ -42,10 +42,17 @@ from plora.signer import sign_sha256_hex
 from plora.targets import select_target_modules
 
 log = logging.getLogger(__name__)
-SEED = 42
+
+# Pull training hyperparameters from config (with fallbacks for backward compatibility)
+TRAIN_CFG = cfg("train", {}) or {}
+SEED = TRAIN_CFG.get("seed", 42)
+TRAIN_SPLIT = TRAIN_CFG.get("train_split", 0.8)
+MAX_LEN = TRAIN_CFG.get("max_len", 128)
+LR = TRAIN_CFG.get("lr", 2e-4)
+DROPOUT = TRAIN_CFG.get("dropout", 0.1)
 
 
-def build_dataset(pairs: List[Tuple[str, str]], tok, max_len: int = 128):
+def build_dataset(pairs: List[Tuple[str, str]], tok, max_len: int = MAX_LEN):
     encs = []
     for q, a in pairs:
         text = f"Question: {q}\nAnswer: {a}"
@@ -93,7 +100,7 @@ def train(
         random.shuffle(answers)
         pairs = list(zip(prompts, answers))
 
-    split = max(1, int(0.8 * len(pairs)))
+    split = max(1, int(TRAIN_SPLIT * len(pairs)))
     train_pairs, dev_pairs = pairs[:split], pairs[split:]
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -102,16 +109,24 @@ def train(
 
     target_modules = select_target_modules(model, scheme)
     l_cfg = LoraConfig(
-        r=rank, lora_alpha=rank * 2, target_modules=target_modules, lora_dropout=0.1
+        r=rank, lora_alpha=rank * 2, target_modules=target_modules, lora_dropout=DROPOUT
     )
     model = get_peft_model(model, l_cfg)
 
-    train_ds = build_dataset(train_pairs, tok)
+    train_ds = build_dataset(train_pairs, tok, max_len=MAX_LEN)
 
-    optim = torch.optim.AdamW(model.parameters(), lr=2e-4)
+    optim = torch.optim.AdamW(model.parameters(), lr=LR)
     model.train()
 
-    log.info("Starting training: %d batches * %d epochs", len(train_ds), epochs)
+    log.info(
+        "Starting training: %d batches * %d epochs (lr=%.2e, dropout=%.2f, max_len=%d, split=%.2f)",
+        len(train_ds),
+        epochs,
+        LR,
+        DROPOUT,
+        MAX_LEN,
+        TRAIN_SPLIT,
+    )
     for epoch in range(epochs):
         for batch in train_ds:
             batch = {k: v.to(device) for k, v in batch.items()}

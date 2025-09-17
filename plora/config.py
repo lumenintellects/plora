@@ -36,12 +36,28 @@ _DEFAULTS: Dict[str, Any] = {
     "allowed_ranks": [1, 4, 8, 16],
     "allowed_targets": "attention",
     "graph": {"p": 0.25, "ws_k": 4, "ws_beta": 0.2, "ba_m": 2},
+    # Value-add experiment grid defaults
     "value_add": {
         "dev_size": 256,
         "ranks": [4, 8, 16],
         "schemes": ["all"],
         "seeds": [42],
+        "placebo_b_rank": 8,  # rank used for label-shuffle placebo
     },
+    # Training hyperparameters (centralised for reproducibility)
+    "train": {
+        "lr": 2e-4,
+        "dropout": 0.1,
+        "max_len": 128,
+        "train_split": 0.8,  # fraction of samples used for training (rest is dev)
+        "seed": 42,
+    },
+    # Probe calibration desired error targets
+    "probes": {"target_fp": 0.05, "target_fn": 0.1},
+    # Swarm / consensus defaults
+    "swarm": {"trojan_rate": 0.3, "quorum": 2},
+    # Gate threshold defaults (can be overridden in YAML)
+    "gate": {"tau_trigger": 0.2, "tau_clean_delta": -0.05, "tau_tensor_z": 5.0},
 }
 
 
@@ -56,7 +72,7 @@ def load() -> Dict[str, Any]:
         return dict(_DEFAULTS)
     try:
         data = yaml.safe_load(path.read_text()) or {}
-        # shallow merge defaults -> data (data wins); nested for value_add/graph
+        # shallow merge defaults -> data (data wins); nested for value_add/graph/train/probes/swarm/gate
         out = dict(_DEFAULTS)
         for k, v in data.items():
             if isinstance(v, dict) and isinstance(out.get(k), dict):

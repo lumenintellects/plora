@@ -85,3 +85,29 @@ value_add:
   # Options: list of integers; e.g., [41,42,43].
   # Rationale: Three seeds recommended for significance.
   seeds: [41, 42, 43]
+  # placebo_b_rank: Rank for label-shuffle placebo; choose moderate rank for parity with main grid lower bound.
+  placebo_b_rank: 4
+
+# Training hyperparameters for full experiments
+train:
+  lr: 0.0002
+  dropout: 0.1
+  max_len: 256     # Longer context for fuller evaluation
+  train_split: 0.9 # Use more data for training in full runs
+  seed: 42
+
+# Probe calibration targets (can be tuned for stricter gates in full runs)
+probes:
+  target_fp: 0.05
+  target_fn: 0.1
+
+# Swarm / consensus parameters
+swarm:
+  trojan_rate: 0.3
+  quorum: 2
+
+# Gate thresholds (override defaults if tighter needed)
+# gate:
+#   tau_trigger: 0.2
+#   tau_clean_delta: -0.05
+#   tau_tensor_z: 5.0

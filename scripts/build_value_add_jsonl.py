@@ -35,6 +35,9 @@ import torch
 CONFIG_RE = re.compile(
     r"^(?P<domain>[^_]+)_r(?P<rank>\d+?)_(?P<scheme>[^_]+)_seed(?P<seed>\d+)$"
 )
+# Support nested layout: rank_r<rank>/<domain>_<scheme>_seed<seed>
+NESTED_PARENT_RE = re.compile(r"^rank_r(?P<rank>\d+)$")
+NESTED_CHILD_RE = re.compile(r"^(?P<domain>[^_]+)_(?P<scheme>[^_]+)_seed(?P<seed>\d+)$")
 
 
 @dataclass(frozen=True)
@@ -103,12 +106,33 @@ def discover_configs(
     allow = set(allow_domains) if allow_domains else None
     cfgs: List[Config] = []
     for child in sorted([p for p in root.iterdir() if p.is_dir()]):
+        # Flat pattern first
         cfg = Config.from_dir(child)
-        if not cfg:
+        if cfg:
+            if allow and cfg.domain not in allow:
+                continue
+            cfgs.append(cfg)
             continue
-        if allow and cfg.domain not in allow:
-            continue
-        cfgs.append(cfg)
+        # Nested pattern: rank_rX/<domain>_<scheme>_seedY
+        m_parent = NESTED_PARENT_RE.match(child.name)
+        if m_parent:
+            rank_val = int(m_parent.group("rank"))
+            for sub in sorted([p for p in child.iterdir() if p.is_dir()]):
+                m_child = NESTED_CHILD_RE.match(sub.name)
+                if not m_child:
+                    continue
+                domain = m_child.group("domain")
+                if allow and domain not in allow:
+                    continue
+                cfgs.append(
+                    Config(
+                        domain=domain,
+                        rank=rank_val,
+                        scheme=m_child.group("scheme"),
+                        seed=int(m_child.group("seed")),
+                        dir=sub,
+                    )
+                )
     cfgs.sort(key=lambda c: (c.domain, c.rank, c.scheme, c.seed))
     return cfgs
 
@@ -499,6 +523,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Disable on-disk adapter NLL cache",
     )
+    ap.add_argument(
+        "--list-configs",
+        action="store_true",
+        help="List discovered configs and exit (debugging)",
+    )
+    ap.add_argument(
+        "--seeds",
+        type=lambda s: [int(x) for x in s.split(",") if x],
+        default=cfg("value_add.seeds", None),
+        help="Comma-separated seeds to include (filter). Default: value_add.seeds from config or all if unset",
+    )
     args = ap.parse_args(argv)
 
     root = args.artifacts_dir
@@ -506,14 +541,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Artifacts dir not found: {root}", file=sys.stderr)
         return 2
 
+    seeds_filter = set(args.seeds) if args.seeds else None
+
     cfgs = [
         c
         for c in discover_configs(root)
         if (not args.filter or re.search(args.filter, c.dir.name))
+        and (seeds_filter is None or c.seed in seeds_filter)
     ]
     if not cfgs:
-        print("No artifact configs discovered.", file=sys.stderr)
+        print("No artifact configs discovered after filtering.", file=sys.stderr)
         return 3
+
+    if args.list_configs:
+        for c in cfgs:
+            print(
+                f"{c.domain} rank={c.rank} scheme={c.scheme} seed={c.seed} -> {c.dir}"
+            )
+        print(f"Discovered {len(cfgs)} configs.")
+        return 0
 
     out_path = args.output
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -588,7 +634,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Compute/restore baseline caches per domain; free baseline model immediately after
         baseline_model = AutoModelForCausalLM.from_pretrained(
             bm_name,
-            torch_dtype=dtype,
+            dtype=dtype,
             attn_implementation="eager",
             **_model_load_kwargs(device),
         )

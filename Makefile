@@ -1,5 +1,6 @@
 .PHONY: setup poetry-env test train-legal sign-legal offer fetch value-add-smoke value-add-full swarm-sim \
-	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dry-run-lite dump-policy full-experiment
+	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dry-run-lite dump-policy full-experiment train-all sign-all
+
 .PHONY: alt-train-merge
 alt-train-merge:
 	poetry run python -m scripts.alternating_train_merge --domains arithmetic,legal,medical --cycles 2 --samples 32 --rank 4 --out results/alt_train_merge
@@ -47,11 +48,16 @@ train-all:
 		  --domain $$d --epochs 1 --output out/$$d ; \
 	done
 
-sign-all: train-all
+sign-all:
 	@poetry run python -c "import pathlib,plora.signer as s; \
 	    k=pathlib.Path('keys'); k.mkdir(exist_ok=True); \
 	    p=k/'temp_priv.pem'; q=k/'temp_pub.pem'; \
 	    (p.exists() or s.generate_keypair(p,q))"
+	@missing=0; for d in $(DOMAINS); do \
+	    if [ ! -f out/$$d/adapter_model.safetensors ]; then \
+	        echo "[sign-all] Missing adapter for domain $$d (run 'make train-all' first)"; missing=1; \
+	    fi; \
+	done; [ $$missing -eq 0 ] || exit 1
 	@for d in $(DOMAINS); do \
 		poetry run python -m scripts.sign_plasmid \
 		    --adapter-dir out/$$d --private-key keys/temp_priv.pem ; \
@@ -90,31 +96,22 @@ value-add-build-full:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
-	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
-	  --base-model $$(poetry run python -m plora.config base_model) \
+	  --domains "$(shell poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
+	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
+	  --base-model $(shell poetry run python -m plora.config base_model) \
+	  --seeds $(shell poetry run python -m plora.config value_add.seeds | tr -d '[] ') \
 	  --overwrite
-
-# Build with a filter (regex) and smaller dev set for smoke or chunked runs
-value-add-build-filter:
-	PLORA_FORCE_CPU=$(CPU) \
-	poetry run python -m scripts.build_value_add_jsonl \
-	  --artifacts-dir results/value_add \
-	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
-	  --dev-size $(DEV) \
-	  --base-model $$(poetry run python -m plora.config base_model) \
-	  --filter $(FILTER)
 
 # Build with very low resource usage (skip placebos & cross, smaller dev and length)
 value-add-build-lowmem:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
-	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
+	  --domains "$(shell poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
+	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
 	  --max-length 256 \
-	  --base-model $$(poetry run python -m plora.config base_model) \
+	  --base-model $(shell poetry run python -m plora.config base_model) \
+	  --seeds $(shell poetry run python -m plora.config value_add.seeds | tr -d '[] ') \
 	  --skip-placebos \
 	  --skip-cross \
 	  --overwrite
@@ -199,40 +196,47 @@ config-use-dry:
 
 .PHONY: dry-run-lite
 dry-run-lite: config-use-dry
-	@echo "[1/16] Running unit tests" && \
+	@echo "[1/19] Running unit tests" && \
 	poetry run pytest -q && \
-	echo "[2/16] Calibrating probes" && \
+	echo "[2/19] Calibrating spectral constant C (ER)" && \
+	$(MAKE) calibrate-c && \
+	echo "[3/19] Validating spectral/Cheeger bounds" && \
+	$(MAKE) validate-bounds && \
+	echo "[4/19] Calibrating probes" && \
 	$(MAKE) probes-calib && \
-	echo "[3/16] Calibrating C (tiny ER)" && \
-	poetry run python -m scripts.calibrate_c --topology er --ns 10,12 --p $$(poetry run python -m plora.config graph.p) --rounds 5 --seed 7 --out results/c_calib_er_lite.json && \
-	echo "[4/16] Validating bounds (tiny)" && \
-	poetry run python -m scripts.validate_bounds --ns 10,12 --p $$(poetry run python -m plora.config graph.p) --seed 7 --out results/bounds_validation_lite.json && \
-	echo "[5/16] Training per-domain adapters (tiny)" && \
+	echo "[5/19] Training per-domain adapters" && \
 	$(MAKE) train-all && \
-	echo "[6/16] Signing adapters" && \
+	echo "[6/19] Signing adapters" && \
 	$(MAKE) sign-all && \
-	echo "[7/16] Swarm v2 simulation (security on, fast)" && \
+	echo "[7/19] Swarm v2 simulation (security on)" && \
 	$(MAKE) swarm-v2-smoke && \
-	echo "[8/16] Summarising v2 reports" && \
+	echo "[8/19] Summarising v2 reports" && \
 	$(MAKE) swarm-v2-eval && \
-	echo "[9/16] Monolithic baseline (fast)" && \
+	echo "[9/19] Training monolithic baseline (rank 4)" && \
 	$(MAKE) monolithic-r4 && \
-	echo "[10/16] Value-add rank sweep (small, tiny base)" && \
+	echo "[10/19] Value-add rank sweep (small)" && \
 	$(MAKE) value-add-rank-sweep && \
-	echo "[11/16] Alternating train-merge (tiny)" && \
-	poetry run python -m scripts.alternating_train_merge --domains arithmetic,legal --cycles 1 --out results/alt_train_merge_lite && \
-	echo "[12/16] Value-add JSONL build (lowmem)" && \
+	echo "[11/19] Thesis-scale sweep (compact)" && \
+	$(MAKE) thesis-sweep && \
+	echo "[12/19] Generating figures" && \
+	$(MAKE) figures && \
+	echo "[13/19] Ablations (rank/scheme)" && \
+	$(MAKE) ablation && \
+	echo "[14/19] Alternating train-merge stability" && \
+	$(MAKE) alt-train-merge && \
+	echo "[15/19] Value-add JSONL build (low mem)" && \
 	$(MAKE) value-add-build-lowmem && \
-	echo "[13/16] Consensus-enabled v2 smoke (fast)" && \
+	echo "[16/19] Consensus-enabled v2 smoke" && \
 	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
-	echo "[14/16] gRPC offer/fetch demo (fast)" && \
+	echo "[17/19] gRPC offer/fetch demo" && \
 	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
-	echo "[15/16] Dump effective security policy" && \
-	$(MAKE) dump-policy && \
-	echo "Writing tiny history for net-it metrics" && \
+	echo "[18/19] Dump effective security policy" && \
+	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
+	echo "[19/19] Net IT metrics" && \
 	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
 	$(MAKE) net-it && \
-	echo "Dry-run lite complete. See results/ and out/."
+	echo "Dry-run lite (expanded) complete. See results/ and out/."
 
 # ---------------------------------------------------------------------------
 # Full experiment:
@@ -276,12 +280,13 @@ full-experiment: config-use-full
 	echo "[15/19] Value-add JSONL build (low mem)" && \
 	$(MAKE) value-add-build-lowmem && \
 	echo "[16/19] Consensus-enabled v2 smoke" && \
-	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p 0.25 --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
+	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
 	echo "[17/19] gRPC offer/fetch demo (server in background)" && \
 	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
 	echo "[18/19] Dump effective security policy" && \
-	$(MAKE) dump-policy && \
-	echo "Writing tiny history for net-it metrics" && \
+	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
+	echo "[19/19] Net IT metrics" && \
 	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
 	$(MAKE) net-it && \
 	echo "Full experiment complete. See results/ and out/."
@@ -344,12 +349,13 @@ artefacts-check:
 # Example: make dump-policy POLICY=policy.json TARGETS=assets/allowed_targets.txt RANKS=4,8,16 SIG=off
 # ---------------------------------------------------------------------------
 POLICY ?=
-TARGETS ?= assets/allowed_targets.txt
-RANKS ?= 4,8,16
+TARGETS ?=
+RANKS ?=
 SIG ?= off
+
 dump-policy:
 	poetry run python -m scripts.dump_policy \
-		$$(test -n "$(POLICY)" && echo --policy_file $(POLICY)) \
-		--allowed_targets_file $(TARGETS) \
-		--allowed_ranks $(RANKS) \
+		$(if $(POLICY),--policy_file $(POLICY)) \
+		$(if $(TARGETS),--allowed_targets_file $(TARGETS)) \
+		$(if $(RANKS),--allowed_ranks $(RANKS)) \
 		--signatures $(SIG)
