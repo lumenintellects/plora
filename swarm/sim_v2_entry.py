@@ -15,8 +15,7 @@ import tempfile
 from pathlib import Path
 import json
 
-from plora.agent import Agent, AdapterInfo
-from plora.manifest import Manifest
+from plora.agent import Agent, make_dummy_adapter
 from swarm.swarm_v2 import run_gossip
 from plora.gate import Policy
 from plora.targets import ATTENTION_SUFFIXES
@@ -35,6 +34,7 @@ from swarm.metrics import (
 )
 from swarm.theory import predicted_rounds_spectral
 from swarm.consensus import ConsensusEngine
+from plora.config import get as cfg
 
 
 _DOMAINS_DEFAULT = ["arithmetic", "legal", "medical"]
@@ -44,11 +44,11 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run Swarm Sim v2 push–pull gossip")
     p.add_argument("--agents", type=int, default=6)
     p.add_argument("--rounds", type=int, default=5)
-    p.add_argument("--graph_p", type=float, default=0.25)
+    p.add_argument("--graph_p", type=float, default=cfg("graph.p", 0.25))
     p.add_argument("--graph", choices=["er", "ws", "ba"], default="er")
-    p.add_argument("--ws_k", type=int, default=4, help="WS: degree parameter k")
-    p.add_argument("--ws_beta", type=float, default=0.2, help="WS: rewiring prob")
-    p.add_argument("--ba_m", type=int, default=2, help="BA: new edges per node m")
+    p.add_argument("--ws_k", type=int, default=cfg("graph.ws_k", 4), help="WS: degree parameter k")
+    p.add_argument("--ws_beta", type=float, default=cfg("graph.ws_beta", 0.2), help="WS: rewiring prob")
+    p.add_argument("--ba_m", type=int, default=cfg("graph.ba_m", 2), help="BA: new edges per node m")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--max_inflight",
@@ -78,7 +78,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--allowed_targets",
         type=str,
-        default="attention",
+        default=None,
         help="One of attention|all; whitelist for security policy",
     )
     p.add_argument(
@@ -90,7 +90,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--allowed_ranks",
         type=str,
-        default="4,8,16",
+        default=None,
         help="Comma-separated allowed ranks, e.g. 4,8,16",
     )
     p.add_argument(
@@ -117,52 +117,21 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Optional JSON policy file to load",
     )
+    p.add_argument(
+        "--probes_calib",
+        type=Path,
+        default=Path("results/probes_calib.json"),
+        help="Optional path to probes calibration JSON (tau_* thresholds)",
+    )
     p.add_argument("--tau_trigger", type=float, default=None)
     p.add_argument("--tau_norm_z", type=float, default=None)
     p.add_argument("--tau_clean_delta", type=float, default=None)
     return p.parse_args()
 
 
-def _make_dummy_adapter(domain: str, root: Path) -> AdapterInfo:
+def _make_dummy_adapter(domain: str, root: Path):
     dom_dir = root / domain
-    dom_dir.mkdir(parents=True, exist_ok=True)
-    model_path = dom_dir / "adapter_model.safetensors"
-    payload = f"dummy-{domain}".encode()
-    model_path.write_bytes(payload)
-    (dom_dir / "adapter_config.json").write_text("{}")
-    sha = hashlib.sha256(payload).hexdigest()
-    man = Manifest(
-        schema_version=0,
-        plasmid_id=f"dummy-{sha[:8]}",
-        domain=domain,
-        base_model="dummy/base",
-        peft_format="lora",
-        lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
-        artifacts={
-            "filename": model_path.name,
-            "sha256": sha,
-            "size_bytes": len(payload),
-        },
-        train_meta={
-            "seed": 0,
-            "epochs": 0,
-            "dataset_id": "none",
-            "sample_count": 0,
-            "timestamp_unix": 0,
-        },
-        metrics={
-            "val_ppl_before": 0.0,
-            "val_ppl_after": 0.0,
-            "delta_ppl": 0.0,
-            "val_em": None,
-            "val_chrf": None,
-        },
-        safety={"licence": "CC0", "poisoning_score": 0.0},
-        signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
-        compatibility={"peft_min": "0", "transformers": "0"},
-    )
-    man.dump(dom_dir / "plora.yml")
-    return AdapterInfo(model_path, man, len(payload))
+    return make_dummy_adapter(domain, dom_dir)
 
 
 async def _main_async(ns: argparse.Namespace) -> None:
@@ -174,16 +143,28 @@ async def _main_async(ns: argparse.Namespace) -> None:
     if ns.security == "on":
         # Resolve allowed targets
         targets = None
-        if ns.allowed_targets_file is not None:
-            if ns.allowed_targets_file.exists():
-                targets = [
-                    line.strip()
-                    for line in ns.allowed_targets_file.read_text().splitlines()
-                    if line.strip()
-                ]
-        elif ns.allowed_targets == "attention":
-            targets = ATTENTION_SUFFIXES
-        ranks = tuple(int(x) for x in ns.allowed_ranks.split(",") if x)
+        if ns.allowed_targets_file is not None and ns.allowed_targets_file.exists():
+            targets = [
+                line.strip()
+                for line in ns.allowed_targets_file.read_text().splitlines()
+                if line.strip()
+            ]
+        else:
+            if ns.allowed_targets in {"attention", "all"}:
+                targets = ATTENTION_SUFFIXES if ns.allowed_targets == "attention" else None
+            else:
+                tcfg = cfg("allowed_targets")
+                if tcfg == "attention":
+                    targets = ATTENTION_SUFFIXES
+                elif tcfg == "all":
+                    targets = None
+                elif isinstance(tcfg, list):
+                    targets = tcfg
+        if ns.allowed_ranks:
+            ranks = tuple(int(x) for x in ns.allowed_ranks.split(",") if x)
+        else:
+            r = cfg("allowed_ranks", [4, 8, 16])
+            ranks = tuple(int(x) for x in r)
         trusted = [Path(p) for p in ns.trusted_pubkeys.split(",") if p]
         if ns.policy_file is not None and ns.policy_file.exists():
             policy = Policy.from_file(ns.policy_file)
@@ -195,6 +176,27 @@ async def _main_async(ns: argparse.Namespace) -> None:
                 signatures_enabled=(ns.signatures == "on"),
                 trusted_public_keys=trusted if trusted else None,
             )
+        # Load probes calibration thresholds if present and not overridden below
+        try:
+            if ns.probes_calib is not None and ns.probes_calib.exists():
+                import json as _json
+
+                _pc = _json.loads(ns.probes_calib.read_text())
+                if policy is not None:
+                    if policy.tau_trigger is None and _pc.get("tau_trigger") is not None:
+                        policy.tau_trigger = float(_pc["tau_trigger"])
+                    if policy.tau_clean_delta is None and _pc.get("tau_clean_delta") is not None:
+                        policy.tau_clean_delta = float(_pc["tau_clean_delta"])
+                    if policy.tau_tensor_z is None and _pc.get("tau_tensor_z") is not None:
+                        policy.tau_tensor_z = float(_pc["tau_tensor_z"])
+                    if policy.tau_norm_z is None and _pc.get("tau_tensor_z") is not None:
+                        # fall back to tensor_z if norm_z not present
+                        try:
+                            policy.tau_norm_z = float(_pc.get("tau_norm_z", _pc["tau_tensor_z"]))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
         if ns.consensus == "on":
             policy.consensus_enabled = True
         # override thresholds if provided
@@ -255,6 +257,7 @@ async def _main_async(ns: argparse.Namespace) -> None:
     prev_I: float | None = None
 
     def _on_round(t: int, accepted_events: list[tuple[int, int, str]]) -> None:
+        nonlocal prev_I
         know = {ag.agent_id: set(ag.knowledge) for ag in agents}
         history.append(know)
         cov = cov_fn(know, domains)

@@ -137,7 +137,6 @@ def rounds_to_diffuse(
     """
     if not history:
         raise ValueError("History cannot be empty.")
-    N = len(next(iter(history[0].values()))) if history else 0
     if domains is None:
         domains = _domains_from_knowledge(history[0])
     result: Dict[str, int | None] = {d: None for d in domains}

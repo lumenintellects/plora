@@ -7,8 +7,9 @@ import json
 from pathlib import Path
 
 from swarm.graph_v2 import erdos_renyi_graph
-from swarm.metrics import spectral_gap, conductance_estimate
-from swarm.theory import predicted_rounds_spectral, cheeger_bounds
+from swarm.metrics import spectral_gap
+from swarm.theory import predicted_rounds_spectral, cheeger_bounds, conductance_estimate
+from plora.config import get as cfg
 
 
 def main():
@@ -16,7 +17,7 @@ def main():
     ap.add_argument(
         "--ns", type=lambda s: [int(x) for x in s.split(",")], default=[20, 40, 80, 160]
     )
-    ap.add_argument("--p", type=float, default=0.2)
+    ap.add_argument("--p", type=float, default=cfg("graph.p", 0.25))
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", type=Path, default=Path("results/bounds_validation.json"))
     ap.add_argument("--plot", action="store_true")

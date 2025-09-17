@@ -101,3 +101,17 @@ def epidemic_threshold(neighbours: Sequence[Sequence[int]]) -> float:
     if lam1 <= 0:
         return float("inf")
     return float(1.0 / lam1)
+
+
+# Convenience re-export: conductance helper (kept here for theory cohesion)
+def conductance_estimate(
+    neighbours: Sequence[Sequence[int]], trials: int = 64, seed: int = 42
+) -> float:
+    """Approximate conductance Φ(G) via random cuts.
+
+    Delegates to the implementation in swarm.metrics to keep a single source of truth
+    while allowing imports from swarm.theory for all diffusion-related predictors.
+    """
+    from .metrics import conductance_estimate as _conductance_estimate  # lazy import
+
+    return _conductance_estimate(neighbours, trials=trials, seed=seed)

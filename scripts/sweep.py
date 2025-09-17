@@ -14,8 +14,7 @@ from pathlib import Path
 import hashlib
 from typing import Dict, List, Sequence
 
-from plora.agent import Agent, AdapterInfo
-from plora.manifest import Manifest
+from plora.agent import Agent, make_dummy_adapter
 from plora.gate import Policy
 from plora.backdoor import mark_trojan
 from swarm.swarm_v2 import run_gossip
@@ -26,51 +25,14 @@ from swarm.graph_v2 import (
 )
 from swarm.metrics import coverage as cov_fn, mutual_information as mi_fn, spectral_gap
 from swarm.theory import predicted_rounds_spectral
+from plora.config import get as cfg
 
 
 _DOMAINS_DEFAULT = ["arithmetic", "legal", "medical"]
 
 
-def _mk_dummy_adapter(domain: str, root: Path) -> AdapterInfo:
-    root.mkdir(parents=True, exist_ok=True)
-    model_path = root / "adapter_model.safetensors"
-    payload = f"dummy-{domain}".encode()
-    model_path.write_bytes(payload)
-    (root / "adapter_config.json").write_text("{}")
-    # compute sha256 of the on-disk payload for manifest consistency
-    sha_hex = hashlib.sha256(payload).hexdigest()
-    man = Manifest(
-        schema_version=0,
-        plasmid_id=f"dummy-{domain}",
-        domain=domain,
-        base_model="dummy/base",
-        peft_format="lora",
-        lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
-        artifacts={
-            "filename": model_path.name,
-            "sha256": sha_hex,
-            "size_bytes": len(payload),
-        },
-        train_meta={
-            "seed": 0,
-            "epochs": 0,
-            "dataset_id": "none",
-            "sample_count": 0,
-            "timestamp_unix": 0,
-        },
-        metrics={
-            "val_ppl_before": 0.0,
-            "val_ppl_after": 0.0,
-            "delta_ppl": 0.0,
-            "val_em": None,
-            "val_chrf": None,
-        },
-        safety={"licence": "CC0", "poisoning_score": 0.0},
-        signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
-        compatibility={"peft_min": "0", "transformers": "0"},
-    )
-    man.dump(root / "plora.yml")
-    return AdapterInfo(model_path, man, len(payload))
+def _mk_dummy_adapter(domain: str, root: Path):
+    return make_dummy_adapter(domain, root)
 
 
 def _build_graph(topology: str, n: int, p: float, k: int, m: int, seed: int):
@@ -121,16 +83,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--topos", type=str, default="er,ws,ba")
     ap.add_argument("--ns", type=str, default="20,40")
-    ap.add_argument("--seeds", type=str, default="41,42")
-    ap.add_argument("--p", type=float, default=0.25)
-    ap.add_argument("--ws_k", type=int, default=4)
-    ap.add_argument("--ws_beta", type=float, default=0.2)
-    ap.add_argument("--ba_m", type=int, default=2)
+    ap.add_argument("--seeds", type=str, default=",".join(str(x) for x in cfg("value_add.seeds", [41,42])))
+    ap.add_argument("--p", type=float, default=cfg("graph.p", 0.25))
+    ap.add_argument("--ws_k", type=int, default=cfg("graph.ws_k", 4))
+    ap.add_argument("--ws_beta", type=float, default=cfg("graph.ws_beta", 0.2))
+    ap.add_argument("--ba_m", type=int, default=cfg("graph.ba_m", 2))
     ap.add_argument("--rounds", type=int, default=10)
     ap.add_argument("--trojan_rates", type=str, default="0.0,0.3")
-    ap.add_argument("--tau_trigger", type=str, default="0.2")
-    ap.add_argument("--tau_norm_z", type=str, default="3.0")
-    ap.add_argument("--tau_clean_delta", type=str, default="-0.05")
+    ap.add_argument("--tau_trigger", type=str, default=str(cfg("gate.tau_trigger", 0.2)))
+    ap.add_argument("--tau_norm_z", type=str, default=str(cfg("gate.tau_norm_z", 3.0)))
+    ap.add_argument("--tau_clean_delta", type=str, default=str(cfg("gate.tau_clean_delta", -0.05)))
     ap.add_argument("--out", type=Path, default=Path("results/thesis_sweep.jsonl"))
     ns = ap.parse_args(argv)
 

@@ -83,6 +83,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=cfg("eval_split", "validation"),
         help="Evaluation split for value-add (validation|test).",
     )
+    p.add_argument(
+        "--placebo-b-rank",
+        type=int,
+        default=8,
+        help="Rank to use for placebo-B (label-shuffle) training",
+    )
 
     return p
 
@@ -273,7 +279,7 @@ def main(argv: List[str] | None = None) -> None:
                             output_dir=placebo_b_dir,
                             base_model=base_model_name,
                             shuffle_labels=True,
-                            rank=8,
+                            rank=int(args.placebo_b_rank),
                             scheme=scheme,
                         )
                     placebo_b_nlls = evaluate_pair(placebo_b_dir, domain)

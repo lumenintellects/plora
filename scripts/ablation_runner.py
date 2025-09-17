@@ -50,6 +50,10 @@ def main(argv: List[str] | None = None) -> None:
                     str(ns.samples),
                     "--output",
                     str(out_dir),
+                    "--rank",
+                    str(r),
+                    "--scheme",
+                    scheme,
                 ]
                 if ns.base_model:
                     cmd.extend(["--base-model", ns.base_model])

@@ -13,8 +13,7 @@ from pathlib import Path
 import hashlib
 from typing import List
 
-from plora.agent import Agent, AdapterInfo
-from plora.manifest import Manifest
+from plora.agent import Agent, make_dummy_adapter
 from swarm.swarm_v2 import run_gossip
 from swarm.graph_v2 import (
     erdos_renyi_graph,
@@ -22,50 +21,9 @@ from swarm.graph_v2 import (
     barabasi_albert_graph,
 )
 from swarm.metrics import spectral_gap
-
+from plora.config import get as cfg
 
 _DOMAINS_DEFAULT = ["arithmetic", "legal", "medical"]
-
-
-def _mk_dummy_adapter(domain: str, root: Path) -> AdapterInfo:
-    root.mkdir(parents=True, exist_ok=True)
-    model_path = root / "adapter_model.safetensors"
-    payload = f"dummy-{domain}".encode()
-    model_path.write_bytes(payload)
-    (root / "adapter_config.json").write_text("{}")
-    sha_hex = hashlib.sha256(payload).hexdigest()
-    man = Manifest(
-        schema_version=0,
-        plasmid_id=f"dummy-{domain}",
-        domain=domain,
-        base_model="dummy/base",
-        peft_format="lora",
-        lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
-        artifacts={
-            "filename": model_path.name,
-            "sha256": sha_hex,
-            "size_bytes": len(payload),
-        },
-        train_meta={
-            "seed": 0,
-            "epochs": 0,
-            "dataset_id": "none",
-            "sample_count": 0,
-            "timestamp_unix": 0,
-        },
-        metrics={
-            "val_ppl_before": 0.0,
-            "val_ppl_after": 0.0,
-            "delta_ppl": 0.0,
-            "val_em": None,
-            "val_chrf": None,
-        },
-        safety={"licence": "CC0", "poisoning_score": 0.0},
-        signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
-        compatibility={"peft_min": "0", "transformers": "0"},
-    )
-    man.dump(root / "plora.yml")
-    return AdapterInfo(model_path, man, len(payload))
 
 
 def build_graph(topology: str, n: int, p: float, k: int, m: int, seed: int):
@@ -84,9 +42,9 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument(
         "--ns", type=lambda s: [int(x) for x in s.split(",")], required=True
     )
-    ap.add_argument("--p", type=float, default=0.25, help="ER/WS probability")
-    ap.add_argument("--k", type=int, default=4, help="WS k")
-    ap.add_argument("--m", type=int, default=2, help="BA m")
+    ap.add_argument("--p", type=float, default=cfg("graph.p", 0.25), help="ER/WS probability")
+    ap.add_argument("--k", type=int, default=cfg("graph.ws_k", 4), help="WS k")
+    ap.add_argument("--m", type=int, default=cfg("graph.ba_m", 2), help="BA m")
     ap.add_argument("--rounds", type=int, default=20)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", type=Path, required=True)
@@ -102,7 +60,7 @@ def main(argv: List[str] | None = None) -> None:
         for i in range(n):
             dom = _DOMAINS_DEFAULT[i % len(_DOMAINS_DEFAULT)]
             root = Path(".calib_tmp") / f"agent_{ns.topology}_{n}_{i}"
-            ad = _mk_dummy_adapter(dom, root)
+            ad = make_dummy_adapter(dom, root)
             ag = Agent(i, dom, ad, root_dir=root)
             agents.append(ag)
 
@@ -119,7 +77,7 @@ def main(argv: List[str] | None = None) -> None:
             run_gossip(
                 agents,
                 rounds=ns.rounds,
-                p=ns.p if ns.topology == "er" else 0.25,
+                p=ns.p,
                 seed=ns.seed,
                 neighbours=nbrs,
                 on_round=_on_round,

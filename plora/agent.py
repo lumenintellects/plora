@@ -328,3 +328,53 @@ class Agent:
         except Exception:
             pass
         return True
+
+
+# ------------------------------------------------------------------
+# Utilities
+# ------------------------------------------------------------------
+def make_dummy_adapter(domain: str, out_dir: Path) -> AdapterInfo:
+    """Create a minimal on-disk dummy adapter for a domain and return AdapterInfo.
+
+    Writes adapter_model.safetensors, adapter_config.json and plora.yml into
+    out_dir. Useful for in-process simulations and calibrations where a real
+    LoRA payload is not required.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    model_path = out_dir / "adapter_model.safetensors"
+    payload = f"dummy-{domain}".encode()
+    model_path.write_bytes(payload)
+    (out_dir / "adapter_config.json").write_text("{}")
+    sha_hex = sha256(payload).hexdigest()
+    man = Manifest(
+        schema_version=0,
+        plasmid_id=f"dummy-{domain}",
+        domain=domain,
+        base_model="dummy/base",
+        peft_format="lora",
+        lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
+        artifacts={
+            "filename": model_path.name,
+            "sha256": sha_hex,
+            "size_bytes": len(payload),
+        },
+        train_meta={
+            "seed": 0,
+            "epochs": 0,
+            "dataset_id": "none",
+            "sample_count": 0,
+            "timestamp_unix": 0,
+        },
+        metrics={
+            "val_ppl_before": 0.0,
+            "val_ppl_after": 0.0,
+            "delta_ppl": 0.0,
+            "val_em": None,
+            "val_chrf": None,
+        },
+        safety={"licence": "CC0", "poisoning_score": 0.0},
+        signer={"algo": "none", "pubkey_fingerprint": "none", "signature_b64": ""},
+        compatibility={"peft_min": "0", "transformers": "0"},
+    )
+    man.dump(out_dir / "plora.yml")
+    return AdapterInfo(model_path, man, len(payload))

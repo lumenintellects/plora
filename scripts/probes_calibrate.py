@@ -9,20 +9,21 @@ target a given FP/FN tradeoff.
 import argparse
 import json
 from pathlib import Path
+from plora.config import get as cfg
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--target_fp", type=float, default=0.05)
-    ap.add_argument("--target_fn", type=float, default=0.1)
+    ap.add_argument("--target_fp", type=float, default=cfg("probes.target_fp", 0.05))
+    ap.add_argument("--target_fn", type=float, default=cfg("probes.target_fn", 0.1))
     ap.add_argument("--out", type=Path, default=Path("results/probes_calib.json"))
     ns = ap.parse_args()
 
     # Placeholder synthetic calibration: pick conservative thresholds
     calib = {
-        "tau_trigger": 0.2,
-        "tau_clean_delta": -0.05,
-        "tau_tensor_z": 5.0,
+        "tau_trigger": cfg("gate.tau_trigger", 0.2),
+        "tau_clean_delta": cfg("gate.tau_clean_delta", -0.05),
+        "tau_tensor_z": cfg("gate.tau_tensor_z", 5.0),
         "target_fp": ns.target_fp,
         "target_fn": ns.target_fn,
     }

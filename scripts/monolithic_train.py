@@ -53,7 +53,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--domains", type=lambda s: s.split(","), required=True)
     ap.add_argument("--epochs", type=int, default=1)
-    ap.add_argument("--samples", type=int, default=64)
+    ap.add_argument("--samples", type=int, default=cfg("samples", 64))
     ap.add_argument("--rank", type=int, default=4)
     ap.add_argument("--output", type=Path, required=True)
     ns = ap.parse_args()
