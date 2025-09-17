@@ -75,12 +75,12 @@ fetch-all:
 # Value-add experiment (small smoke run)
 value-add-smoke:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$(poetry run python -m plora.config domains)
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')"
 
 # Full value-add experiment (longer, deeper grid)
 value-add-full:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$(poetry run python -m plora.config domains) \
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
 	  --seeds $$(poetry run python -m plora.config value_add.seeds) \
 	  --resume
 
@@ -90,7 +90,7 @@ value-add-build-full:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -m plora.config domains)" \
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
 	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
 	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --overwrite
@@ -101,7 +101,7 @@ value-add-build-filter:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -m plora.config domains)" \
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
 	  --dev-size $(DEV) \
 	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --filter $(FILTER)
@@ -111,7 +111,7 @@ value-add-build-lowmem:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$(poetry run python -m plora.config domains)" \
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
 	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
 	  --max-length 256 \
 	  --base-model $$(poetry run python -m plora.config base_model) \
@@ -177,12 +177,12 @@ thesis-sweep:
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
-	poetry run python -m scripts.monolithic_train --domains $$(poetry run python -m plora.config domains) --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
+	poetry run python -m scripts.monolithic_train --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
 
 # Rank sweep runner – writes rank-scoped outputs under results/value_add
 value-add-rank-sweep:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$(poetry run python -m plora.config domains)
+	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')"
 
 # ---------------------------------------------------------------------------
 # Minimal dry run (very fast):
