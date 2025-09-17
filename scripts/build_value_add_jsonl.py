@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import gc
 import json
-import os
 import re
 import sys
 import time
@@ -538,21 +537,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Resolve base model per config and group
     groups: Dict[str, List[Config]] = {}
     unresolved: List[Config] = []
-    for cfg in cfgs:
-        bm = parse_base_model_from_artifact(cfg.dir) or args.base_model
+    for conf in cfgs:
+        bm = parse_base_model_from_artifact(conf.dir) or args.base_model
         if not bm:
-            unresolved.append(cfg)
+            unresolved.append(conf)
             continue
-        groups.setdefault(bm, []).append(cfg)
+        groups.setdefault(bm, []).append(conf)
 
     # Write failures for unresolved base model
-    for cfg in unresolved:
-        by_key[cfg.key()] = {
+    for conf in unresolved:  # renamed from cfg
+        by_key[conf.key()] = {
             "config": {
-                "domain": cfg.domain,
-                "rank": cfg.rank,
-                "scheme": cfg.scheme,
-                "seed": cfg.seed,
+                "domain": conf.domain,
+                "rank": conf.rank,
+                "scheme": conf.scheme,
+                "seed": conf.seed,
             },
             "status": "eval_failed:base_model_unknown",
             "trained": None,
@@ -626,10 +625,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             gc.collect()
         # Evaluate all configs for this base model
         try:
-            for cfg in cfg_list:
+            for conf in cfg_list:  # renamed from cfg
                 try:
                     rec = eval_one_config(
-                        cfg,
+                        conf,
                         bm_name,
                         tok,
                         device,
@@ -647,10 +646,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 except Exception as e:
                     rec = {
                         "config": {
-                            "domain": cfg.domain,
-                            "rank": cfg.rank,
-                            "scheme": cfg.scheme,
-                            "seed": cfg.seed,
+                            "domain": conf.domain,
+                            "rank": conf.rank,
+                            "scheme": conf.scheme,
+                            "seed": conf.seed,
                         },
                         "status": f"eval_failed:{e.__class__.__name__}",
                         "trained": None,
@@ -659,7 +658,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "cross_domain": None,
                         "latency_ms": None,
                     }
-                by_key[cfg.key()] = rec
+                by_key[conf.key()] = rec
                 done += 1
                 # Write checkpoint atomically
                 tmp = out_path.with_suffix(".jsonl.tmp")
@@ -675,7 +674,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     ):
                         f.write(json.dumps(r) + "\n")
                 tmp.replace(out_path)
-                print(f"[{done}/{total}] wrote {cfg.dir.name}")
+                print(f"[{done}/{total}] wrote {conf.dir.name}")
                 # small GC between configs
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()

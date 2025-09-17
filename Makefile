@@ -75,13 +75,13 @@ fetch-all:
 # Value-add experiment (small smoke run)
 value-add-smoke:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$$(poetry run python -m plora.config domains)
+	  --domains $$(poetry run python -m plora.config domains)
 
 # Full value-add experiment (longer, deeper grid)
 value-add-full:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$$(poetry run python -m plora.config domains) \
-	  --seeds $$$(poetry run python -m plora.config value_add.seeds) \
+	  --domains $$(poetry run python -m plora.config domains) \
+	  --seeds $$(poetry run python -m plora.config value_add.seeds) \
 	  --resume
 
 # Build value_add.jsonl from artifacts (full evaluation)
@@ -90,9 +90,9 @@ value-add-build-full:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$$(poetry run python -m plora.config domains)" \
-	  --dev-size $$$(poetry run python -m plora.config value_add.dev_size) \
-	  --base-model $$$(poetry run python -m plora.config base_model) \
+	  --domains "$$(poetry run python -m plora.config domains)" \
+	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
+	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --overwrite
 
 # Build with a filter (regex) and smaller dev set for smoke or chunked runs
@@ -101,9 +101,9 @@ value-add-build-filter:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$$(poetry run python -m plora.config domains)" \
+	  --domains "$$(poetry run python -m plora.config domains)" \
 	  --dev-size $(DEV) \
-	  --base-model $$$(poetry run python -m plora.config base_model) \
+	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --filter $(FILTER)
 
 # Build with very low resource usage (skip placebos & cross, smaller dev and length)
@@ -111,10 +111,10 @@ value-add-build-lowmem:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$$$(poetry run python -m plora.config domains)" \
-	  --dev-size $$$(poetry run python -m plora.config value_add.dev_size) \
+	  --domains "$$(poetry run python -m plora.config domains)" \
+	  --dev-size $$(poetry run python -m plora.config value_add.dev_size) \
 	  --max-length 256 \
-	  --base-model $$$(poetry run python -m plora.config base_model) \
+	  --base-model $$(poetry run python -m plora.config base_model) \
 	  --skip-placebos \
 	  --skip-cross \
 	  --overwrite
@@ -128,7 +128,7 @@ swarm-sim:
 
 # Swarm Sim v2 (push–pull, in-process) – security on, short dry-run
 swarm-v2-smoke:
-	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$$(poetry run python -m plora.config graph.p) --security on --trojan_rate 0.3
+	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$(poetry run python -m plora.config graph.p) --security on --trojan_rate 0.3
 
 # Summarise v2 (and v1 graph) reports into a compact JSON
 swarm-v2-eval:
@@ -140,11 +140,11 @@ figures:
 
 .PHONY: validate-bounds
 validate-bounds:
-	poetry run python -m scripts.validate_bounds --ns 20,40,80,160 --p $$$(poetry run python -m plora.config graph.p) --seed 42 --out results/bounds_validation.json
+	poetry run python -m scripts.validate_bounds --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --seed 42 --out results/bounds_validation.json
 
 .PHONY: calibrate-c
 calibrate-c:
-	poetry run python -m scripts.calibrate_c --topology er --ns 20,40,80,160 --p $$$(poetry run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_er.json
+	poetry run python -m scripts.calibrate_c --topology er --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_er.json
 
 .PHONY: mine-calib
 mine-calib:
@@ -177,12 +177,12 @@ thesis-sweep:
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
-	poetry run python -m scripts.monolithic_train --domains $$$(poetry run python -m plora.config domains) --epochs 1 --samples $$$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
+	poetry run python -m scripts.monolithic_train --domains $$(poetry run python -m plora.config domains) --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
 
 # Rank sweep runner – writes rank-scoped outputs under results/value_add
 value-add-rank-sweep:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains $$$(poetry run python -m plora.config domains)
+	  --domains $$(poetry run python -m plora.config domains)
 
 # ---------------------------------------------------------------------------
 # Minimal dry run (very fast):
@@ -204,9 +204,9 @@ dry-run-lite: config-use-dry
 	echo "[2/16] Calibrating probes" && \
 	$(MAKE) probes-calib && \
 	echo "[3/16] Calibrating C (tiny ER)" && \
-	poetry run python -m scripts.calibrate_c --topology er --ns 10,12 --p $$$(poetry run python -m plora.config graph.p) --rounds 5 --seed 7 --out results/c_calib_er_lite.json && \
+	poetry run python -m scripts.calibrate_c --topology er --ns 10,12 --p $$(poetry run python -m plora.config graph.p) --rounds 5 --seed 7 --out results/c_calib_er_lite.json && \
 	echo "[4/16] Validating bounds (tiny)" && \
-	poetry run python -m scripts.validate_bounds --ns 10,12 --p $$$(poetry run python -m plora.config graph.p) --seed 7 --out results/bounds_validation_lite.json && \
+	poetry run python -m scripts.validate_bounds --ns 10,12 --p $$(poetry run python -m plora.config graph.p) --seed 7 --out results/bounds_validation_lite.json && \
 	echo "[5/16] Training per-domain adapters (tiny)" && \
 	$(MAKE) train-all && \
 	echo "[6/16] Signing adapters" && \
@@ -224,7 +224,7 @@ dry-run-lite: config-use-dry
 	echo "[12/16] Value-add JSONL build (lowmem)" && \
 	$(MAKE) value-add-build-lowmem && \
 	echo "[13/16] Consensus-enabled v2 smoke (fast)" && \
-	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
+	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
 	echo "[14/16] gRPC offer/fetch demo (fast)" && \
 	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
 	echo "[15/16] Dump effective security policy" && \
