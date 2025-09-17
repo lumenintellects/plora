@@ -112,6 +112,6 @@ def conductance_estimate(
     Delegates to the implementation in swarm.metrics to keep a single source of truth
     while allowing imports from swarm.theory for all diffusion-related predictors.
     """
-    from .metrics import conductance_estimate as _conductance_estimate  # lazy import
+    from .metrics import conductance_estimate as _conductance_estimate
 
     return _conductance_estimate(neighbours, trials=trials, seed=seed)

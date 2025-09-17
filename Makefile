@@ -182,10 +182,7 @@ value-add-rank-sweep:
 	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')"
 
 # ---------------------------------------------------------------------------
-# Minimal dry run (very fast):
-# - Run unit tests
-# - Swarm v2 smoke (security on)
-# - Summarise v2 reports
+# Minimal dry run:
 # ---------------------------------------------------------------------------
 .PHONY: config-use-full config-use-dry
 config-use-full:
@@ -245,7 +242,6 @@ dry-run-lite: config-use-dry
 # - Swarm v2 (security on) + evaluation
 # - Monolithic baseline + rank sweep value-add
 # - Sweep across topologies/sizes + figures
-# Tip: export PLORA_SAMPLES=64 and set BASE_MODEL to a tiny model for local runs
 # ---------------------------------------------------------------------------
 .PHONY: full-experiment
 full-experiment: config-use-full

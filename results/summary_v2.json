@@ -10,9 +10,9 @@
     "bytes_on_wire": 0,
     "accepted_offers": 10,
     "coverage": {
-      "legal": 0.8333333333333334,
+      "medical": 1.0,
       "arithmetic": 0.8333333333333334,
-      "medical": 1.0
+      "legal": 0.8333333333333334
     },
     "mi": {
       "final": -1.2506409956327227,

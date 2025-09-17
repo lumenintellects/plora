@@ -76,7 +76,7 @@ value_add:
   # ranks: LoRA ranks to evaluate.
   # Options: list of integers; include higher ranks to test capacity effects.
   # Rationale: Minimal set to demonstrate scaling.
-  ranks: [2]
+  ranks: [1]
   # schemes: Target-module schemes.
   # Options: attention | mlp | all.
   # Rationale: "all" evaluates broader targeting.
@@ -87,7 +87,7 @@ value_add:
   seeds: [41]
   # placebo_b_rank: Rank used for label-shuffle placebo adapter.
   # Rationale: Keep small for fast placebo training.
-  placebo_b_rank: 2
+  placebo_b_rank: 1
 
 # train: Central training hyperparameters for adapter fine-tuning.
 train:
