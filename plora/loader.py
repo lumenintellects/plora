@@ -25,16 +25,10 @@ log = logging.getLogger(__name__)
 
 @contextlib.contextmanager
 def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
-    """Temporarily load a LoRA adapter into *model*.
-
-    Example::
-        with inject(base_model, Path("adapter_dir")) as peft:
-            out = peft.generate(**inputs)
-    """
+    """Temporarily load a LoRA adapter into *model*."""
     # Cache pristine weights on CPU to reduce device memory pressure
-    pristine_state = {
-        k: v.detach().cpu().clone() for k, v in model.state_dict().items()
-    }
+    pristine_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    had_peft_attr = hasattr(model, "peft_config")
 
     t0 = time.perf_counter()
     peft_model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
@@ -50,6 +44,12 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
                 if tgt is not None and tgt.shape == v.shape:
                     tgt.copy_(v)
         del peft_model
+        # Defensive cleanup: remove peft_config if PEFT attached it directly to base
+        if hasattr(model, "peft_config") and not had_peft_attr:
+            try:
+                delattr(model, "peft_config")
+            except Exception:
+                pass
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         if torch.backends.mps.is_available():
@@ -368,63 +368,83 @@ def _load_fisher_scalar(adapter_dir: Path) -> float | None:
 
 
 def random_lora(
-    model: PreTrainedModel,
+    base_or_model: str | PreTrainedModel,
     output_dir: Path,
     *,
     r: int | None = None,
     target_modules: List[str] | None = None,
     like_adapter_dir: Path | None = None,
-) -> Path:
-    """Create a *random* LoRA adapter compatible with *model* at *output_dir*.
+):
+    """Create a *random* LoRA adapter at *output_dir* WITHOUT mutating caller model.
 
     Parameters
     ----------
-    model : PreTrainedModel
-        Base model instance to which the adapter will later be applied.
+    base_or_model : str | PreTrainedModel
+        HF model name or an existing (possibly already PEFT-wrapped) model. If a
+        model instance is provided we attempt to derive its original name from
+        ``config._name_or_path`` and load a *fresh* copy so we do not stack
+        adapters onto the passed instance.
     output_dir : Path
-        Directory where the adapter weights & config will be written.  Will be
-        created if it does not exist.
-    r : int, default 8
-        LoRA rank.
+        Destination directory for adapter files.
+    r : int, default None
+        LoRA rank (defaults to 2 if not inferred).
     target_modules : list[str] | None
-        Which sub-modules to target.  If *None* we try to inspect *model* and
-        fall back to *like_adapter_dir*'s config, then to the GPT-style default
-        of ["q_proj", "k_proj", "v_proj", "o_proj"].
+        Explicit target modules; if omitted we infer (or copy from like_adapter_dir).
     like_adapter_dir : Path | None
-        Optional existing adapter directory; if provided we replicate its LoRA
-        configuration (except the weights, which are random).
+        If provided, replicate its adapter_config (except weights).
 
     Returns
     -------
     Path
-        The *output_dir* where files were written.
+        Directory where adapter was written.
     """
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Determine base model name (never reuse the caller instance to avoid stacking wrappers)
+    if isinstance(base_or_model, str):
+        base_model_name = base_or_model
+    else:  # PreTrainedModel
+        base_model_name = getattr(base_or_model.config, "_name_or_path", None) or getattr(
+            base_or_model, "name_or_path", ""
+        )
+        if not base_model_name:
+            raise ValueError(
+                "random_lora: cannot infer base model name from provided model; pass a string instead"
+            )
+
+    # Load a pristine base model lightweight (CPU if possible) just for adapter construction
+    device, dtype = device_dtype()
+    base = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        dtype=dtype,
+        device_map={"": device},
+        attn_implementation="eager",
+        low_cpu_mem_usage=True,
+    )
+
     # ---------------------------------------------------------------------
-    # Determine LoRA configuration
+    # Determine LoRA configuration (rank/modules/dropout/alpha)
     # ---------------------------------------------------------------------
     if like_adapter_dir and (like_adapter_dir / "adapter_config.json").exists():
         import json
 
-        cfg = json.loads((like_adapter_dir / "adapter_config.json").read_text())
-        r = cfg.get("r", r)
-        target_modules = cfg.get("target_modules", target_modules)
-        alpha = cfg.get("lora_alpha", r * 2)
-        dropout = cfg.get("lora_dropout", 0.0)
+        cfg_json = json.loads((like_adapter_dir / "adapter_config.json").read_text())
+        r = cfg_json.get("r", r)
+        target_modules = cfg_json.get("target_modules", target_modules)
+        alpha = cfg_json.get("lora_alpha", (r or 2) * 2)
+        dropout = cfg_json.get("lora_dropout", 0.0)
     else:
         if r is None:
-            r = 2  # minimal default
+            r = 2
         alpha = r * 2
         dropout = 0.0
 
-    # Fallback discovery of target modules if still None
+    # Infer target modules if still None
     if target_modules is None:
         cand = ["q_proj", "k_proj", "v_proj", "o_proj", "c_attn", "c_proj"]
         found = {
             suffix
-            for name, _ in model.named_modules()
+            for name, _ in base.named_modules()
             for suffix in cand
             if name.endswith(suffix)
         }
@@ -433,22 +453,18 @@ def random_lora(
     l_cfg = LoraConfig(
         r=r, lora_alpha=alpha, target_modules=target_modules, lora_dropout=dropout
     )
+    peft_tmp = get_peft_model(base, l_cfg)  # base copy only
 
-    # Create a trainable PEFT wrapper to easily write weights later
-    peft_model = get_peft_model(model, l_cfg)
-
-    # ---------------------------------------------------------------------
-    # Randomise LoRA weights, use very small scale (1e-4) so placebo is inert
-    # ---------------------------------------------------------------------
+    # Randomize weights small scale
     with torch.no_grad():
-        for n, p in peft_model.named_parameters():
+        for n, p in peft_tmp.named_parameters():
             if "lora_A" in n or "lora_B" in n:
                 p.copy_(torch.randn_like(p) * 1e-4)
 
-    peft_model.save_pretrained(output_dir, safe_serialization=True)
+    peft_tmp.save_pretrained(output_dir, safe_serialization=True)
 
-    # Clean up memory, we created extra weights on model's device
-    del peft_model
+    # Cleanup
+    del peft_tmp, base
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 

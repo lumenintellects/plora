@@ -153,6 +153,7 @@ def main(argv: List[str] | None = None) -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from plora.compat import device_dtype
     from peft import PeftModel
+    from plora.peft_safety import assert_pristine_base
 
     # programmatic access to train() to avoid subprocess overhead
     train_mod = importlib.import_module("scripts.train_task")
@@ -205,6 +206,7 @@ def main(argv: List[str] | None = None) -> None:
             attn_implementation="eager",
             device_map={"": device},
         )
+        assert_pristine_base(model, where=f"value_add.baseline.domain={domain}")
         tok = AutoTokenizer.from_pretrained(base_model_name)
 
         # Cache baseline per domain, split & seed to avoid recompute across inner loops
@@ -264,7 +266,7 @@ def main(argv: List[str] | None = None) -> None:
                         rank_root / f"{domain}_{scheme}_seed{seed}_placebo_random"
                     )
                     if not placebo_a_dir.exists():
-                        random_lora(model, placebo_a_dir, r=rank)
+                        random_lora(base_model_name, placebo_a_dir, r=rank)
                     placebo_a_nlls = evaluate_pair(placebo_a_dir, domain)
 
                     # Placebo B, label-shuffle trained (train split)

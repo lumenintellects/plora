@@ -1,47 +1,5 @@
 [
   {
-    "N": 4,
-    "topology": "erdos_renyi",
-    "lambda2": 0.585786437626905,
-    "observed_t_all": null,
-    "predicted_t_all": 5,
-    "acceptance_rate": 0.25,
-    "t_all": null,
-    "bytes_on_wire": 0,
-    "accepted_offers": 2,
-    "coverage": {
-      "legal": 0.75,
-      "medical": 0.25,
-      "arithmetic": 0.5
-    },
-    "mi": {
-      "final": 0.2892229155849323,
-      "max": 0.8780719051126378,
-      "min": 0.2892229155849323,
-      "delta_sum": -0.5888489895277055,
-      "delta_ci": [
-        -0.5888489895277055,
-        0.0
-      ]
-    },
-    "te_pair": 0.0,
-    "theory": {},
-    "gate": {
-      "rejected_hash_total": 0,
-      "rejected_safety_total": 2,
-      "accepted_clean_total": 2,
-      "accepted_trojan_total": 0,
-      "rejected_clean_total": 0,
-      "rejected_trojan_total": 2,
-      "false_negatives": 0,
-      "false_positives": 0,
-      "rejection_reasons": {
-        "consensus_pending": 3,
-        "trigger_rate_high": 2
-      }
-    }
-  },
-  {
     "N": 6,
     "topology": "erdos_renyi",
     "lambda2": 0.7639320225002098,
@@ -52,9 +10,9 @@
     "bytes_on_wire": 0,
     "accepted_offers": 10,
     "coverage": {
+      "legal": 0.8333333333333334,
       "arithmetic": 0.8333333333333334,
-      "medical": 1.0,
-      "legal": 0.8333333333333334
+      "medical": 1.0
     },
     "mi": {
       "final": -1.2506409956327227,
