@@ -20,6 +20,9 @@ grpcio-tools = "*"
 pyyaml = "*"
 safetensors = "*"
 datasets = "^4.0.0"
+matplotlib = "*"
+seaborn = "*"
+notebook = "^7.4.5"
 
 [tool.poetry.dev-dependencies]
 pytest = "8.2.0"
