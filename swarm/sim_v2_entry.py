@@ -14,6 +14,7 @@ import random
 import tempfile
 from pathlib import Path
 import json
+import math
 
 from plora.agent import Agent, make_dummy_adapter
 from swarm.swarm_v2 import run_gossip
@@ -138,6 +139,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--tau_trigger", type=float, default=None)
     p.add_argument("--tau_norm_z", type=float, default=None)
     p.add_argument("--tau_clean_delta", type=float, default=None)
+    # Optionally estimate bytes transferred on each accepted offer
+    p.add_argument(
+        "--estimate_size",
+        choices=["on", "off"],
+        default="off",
+        help="Estimate bytes_on_wire by summing adapter artifact sizes for each accepted offer",
+    )
     return p.parse_args()
 
 
@@ -283,24 +291,57 @@ async def _main_async(ns: argparse.Namespace) -> None:
     round_logs: list[dict] = []
     history: list[dict[int, set[str]]] = []
     prev_I: float | None = None
+    cum_abs_mi_change: float = 0.0
+    # Track total bytes transferred if enabled
+    bytes_on_wire: int = 0
+    # Robust to tests constructing Namespace without estimate_size
+    estimate_enabled = getattr(ns, "estimate_size", "off") == "on"
 
     def _on_round(t: int, accepted_events: list[tuple[int, int, str]]) -> None:
-        nonlocal prev_I
+        nonlocal prev_I, cum_abs_mi_change, bytes_on_wire
         know = {ag.agent_id: set(ag.knowledge) for ag in agents}
         history.append(know)
         cov = cov_fn(know, domains)
         H_avg = entropy_avg(coverage_map=cov)
         I_t = mi_fn(know, domains)
         mi_delta = (I_t - prev_I) if (prev_I is not None) else 0.0
+        if prev_I is not None:
+            cum_abs_mi_change += abs(mi_delta)
         prev_I = I_t
+        mi_loss = -mi_delta if mi_delta < 0 else 0.0
+        # If enabled, accumulate bytes for each accepted offer event
+        if estimate_enabled and accepted_events:
+            for (u, v, dom) in accepted_events:
+                try:
+                    ad_map = agents[u].shareable_adapters()
+                    if dom in ad_map:
+                        # Prefer manifest.artifacts.size_bytes if present
+                        size = (
+                            getattr(ad_map[dom].manifest.artifacts, "size_bytes", None)
+                            or ad_map[dom].size_bytes
+                        )
+                        # guard against non-int
+                        size_int = int(size) if isinstance(size, (int, float)) else 0
+                        bytes_on_wire += max(0, size_int)
+                except Exception:
+                    # Ignore size estimation errors (keep simulation robust)
+                    pass
+        # Normalized MI (specialization index) relative to log2(N * D)
+        N_agents = len(agents)
+        D = len(domains) if domains else 1
+        denom = math.log2(max(2, N_agents * D))  # guard: at least log2(2)=1
+        mi_norm = (I_t / denom) if denom > 0 else 0.0
         round_logs.append(
             {
                 "t": t,
                 "coverage": cov,
                 "entropy_avg": H_avg,
                 "mutual_information": I_t,
-                "accepted": [(int(u), int(v), str(d)) for (u, v, d) in accepted_events],
                 "mi_delta": mi_delta,
+                "mi_loss": mi_loss,
+                "mi_cum_abs": cum_abs_mi_change,
+                "mi_norm": mi_norm,
+                "accepted": [(int(u), int(v), str(d)) for (u, v, d) in accepted_events],
             }
         )
 
@@ -336,7 +377,8 @@ async def _main_async(ns: argparse.Namespace) -> None:
         "rounds": round_logs,
         "final": {
             "coverage": coverage,
-            "bytes_on_wire": 0,
+            # Bytes transferred (sum of adapter sizes) if estimation enabled
+            "bytes_on_wire": bytes_on_wire if estimate_enabled else 0,
             "accepted_offers": sum(getattr(ag, "accepted", 0) for ag in agents),
             "gate": {
                 "rejected_hash_total": sum(
@@ -367,6 +409,15 @@ async def _main_async(ns: argparse.Namespace) -> None:
             },
         },
     }
+    # Derive bytes_per_offer metric if possible
+    try:
+        acc_total = report["final"]["accepted_offers"]
+        if acc_total and report["final"]["bytes_on_wire"]:
+            report["final"]["bytes_per_offer"] = report["final"]["bytes_on_wire"] / acc_total
+        else:
+            report["final"]["bytes_per_offer"] = 0
+    except Exception:
+        report["final"]["bytes_per_offer"] = 0
     if engine is not None:
         try:
             # expose committed artefacts per slot in report for smoke validation

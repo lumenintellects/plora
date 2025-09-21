@@ -10,14 +10,19 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 def find_project_root() -> Path:
     """Find the project root by looking for pyproject.toml or Makefile."""
     current = Path.cwd()
-    while current != current.parent:
+    max_levels = 20
+    levels = 0
+    while current != current.parent and levels < max_levels:
         if (current / "pyproject.toml").exists() or (current / "Makefile").exists():
             return current
+        # advance upward
+        current = current.parent
+        levels += 1
     return Path.cwd()
 
 
@@ -160,11 +165,9 @@ def get_experiment_summary_stats(experiment_data: Dict[str, Any]) -> Dict[str, A
 def extract_swarm_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
     """Extract swarm simulation metrics into a pandas DataFrame.
 
-    Args:
-        experiment_data: Dictionary containing experiment data
-
-    Returns:
-        DataFrame with swarm metrics
+    Adds new MI-derived metrics: cumulative absolute MI change, total MI loss (sum of
+    negative deltas magnitudes), normalized final MI, and bootstrap CI for delta sum if
+    available (delta_ci_low/high).
     """
     if not experiment_data.get('swarm_summary'):
         return pd.DataFrame()
@@ -173,6 +176,7 @@ def extract_swarm_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
     records = []
 
     for exp in swarm_data:
+        mi = exp.get('mi', {})
         record = {
             'N': exp.get('N'),
             'topology': exp.get('topology'),
@@ -184,9 +188,15 @@ def extract_swarm_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
             'bytes_on_wire': exp.get('bytes_on_wire', 0),
             'accepted_offers': exp.get('accepted_offers', 0),
             'coverage': exp.get('coverage', {}),
-            'mi_final': exp.get('mi', {}).get('final'),
-            'mi_max': exp.get('mi', {}).get('max'),
-            'mi_min': exp.get('mi', {}).get('min'),
+            'mi_final': mi.get('final'),
+            'mi_max': mi.get('max'),
+            'mi_min': mi.get('min'),
+            'mi_delta_sum': mi.get('delta_sum'),
+            'mi_delta_ci_low': (mi.get('delta_ci') or [None, None])[0],
+            'mi_delta_ci_high': (mi.get('delta_ci') or [None, None])[1],
+            'mi_cum_abs': mi.get('cum_abs'),
+            'mi_total_loss': mi.get('total_loss'),
+            'mi_norm_final': mi.get('norm_final'),
             'gate_rejected_hash_total': exp.get('gate', {}).get('rejected_hash_total', 0),
             'gate_rejected_safety_total': exp.get('gate', {}).get('rejected_safety_total', 0),
             'gate_accepted_clean_total': exp.get('gate', {}).get('accepted_clean_total', 0),
@@ -195,6 +205,49 @@ def extract_swarm_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
         records.append(record)
 
     return pd.DataFrame(records)
+
+
+def extract_swarm_round_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
+    """Return a long-form per-round DataFrame across all available swarm reports.
+
+    Columns: seed, topology, N, round, entropy_avg, mutual_information, mi_delta, mi_loss,
+    mi_cum_abs, mi_norm, accepted_count, plus per-domain coverage columns (coverage_<domain>).
+    """
+    reports: List[dict] = experiment_data.get('swarm_reports') or []
+    if not reports:
+        return pd.DataFrame()
+
+    rows: List[dict] = []
+    for rep in reports:
+        meta = rep.get('meta', {})
+        rounds = rep.get('rounds', [])
+        domains = meta.get('domains') or []
+        seed = meta.get('seed')
+        topology = meta.get('topology')
+        N = meta.get('N')
+        for r in rounds:
+            base = {
+                'seed': seed,
+                'topology': topology,
+                'N': N,
+                'round': r.get('t'),
+                'entropy_avg': r.get('entropy_avg'),
+                'mutual_information': r.get('mutual_information'),
+                'mi_delta': r.get('mi_delta'),
+                'mi_loss': r.get('mi_loss'),
+                'mi_cum_abs': r.get('mi_cum_abs'),
+                'mi_norm': r.get('mi_norm'),
+                'accepted_count': len(r.get('accepted', [])),
+            }
+            cov = r.get('coverage', {}) or {}
+            for d in domains:
+                base[f'coverage_{d}'] = cov.get(d, 0.0)
+            rows.append(base)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    # Sort for ergonomic viewing
+    return df.sort_values(['seed', 'round']).reset_index(drop=True)
 
 
 def extract_value_add_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
@@ -297,7 +350,7 @@ def get_security_summary(experiment_data: Dict[str, Any]) -> Dict[str, Any]:
 
     swarm_data = experiment_data['swarm_summary']
 
-    security_metrics = {
+    security_metrics: Dict[str, Any] = {
         'total_experiments': len(swarm_data),
         'rejection_rates': [],
         'false_positive_rates': [],
@@ -338,9 +391,28 @@ def get_security_summary(experiment_data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if security_metrics['false_negative_rates']:
-        security_metrics['false_negative_rates'] = {
+        security_metrics['false_negative_rate_summary'] = {
             'mean': np.mean(security_metrics['false_negative_rates']),
             'std': np.std(security_metrics['false_negative_rates'])
         }
 
     return security_metrics
+
+
+def get_swarm_df(experiment_data: Dict[str, Any] | None = None) -> pd.DataFrame:
+    """Convenience helper to obtain the swarm metrics DataFrame used in notebooks.
+
+    This resolves "unresolved reference 'swarm_df'" warnings by centralizing the
+    creation of the DataFrame instead of relying on a variable defined ad-hoc in
+    a notebook cell.
+
+    Args:
+        experiment_data: Optional pre-loaded experiment data. If not supplied,
+            the function loads data via load_experiment_data().
+
+    Returns:
+        pandas.DataFrame with swarm metrics (may be empty if no data present).
+    """
+    if experiment_data is None:
+        experiment_data = load_experiment_data()
+    return extract_swarm_metrics(experiment_data)

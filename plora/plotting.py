@@ -11,6 +11,7 @@ import seaborn as sns
 import numpy as np
 from typing import Dict, Any, Tuple
 from pathlib import Path
+from plora.stats import bootstrap_ci_mean
 
 # Set consistent plotting style
 plt.style.use('seaborn-v0_8')
@@ -56,6 +57,9 @@ def setup_plotting_style():
 def create_swarm_dynamics_plot(swarm_report: Dict[str, Any], figsize: Tuple[int, int] = None) -> Tuple[plt.Figure, plt.Axes]:
     """Create comprehensive swarm dynamics visualization.
 
+    Adds overlay of new MI metrics (mi_norm, mi_cum_abs) and highlights per-round
+    negative MI changes (mi_loss) via shaded bars.
+
     Args:
         swarm_report: Dictionary containing swarm simulation round data
         figsize: Optional figure size override
@@ -83,7 +87,7 @@ def create_swarm_dynamics_plot(swarm_report: Dict[str, Any], figsize: Tuple[int,
     for i, domain in enumerate(domains):
         coverage_values = [r.get('coverage', {}).get(domain, 0) for r in rounds]
         axes[0, 0].plot(range(len(rounds)), coverage_values,
-                        marker='o', label=domain, color=COLORS[domain], linewidth=2)
+                        marker='o', label=domain, color=COLORS.get(domain, COLORS['primary']), linewidth=2)
 
     axes[0, 0].set_xlabel('Round')
     axes[0, 0].set_ylabel('Coverage')
@@ -91,12 +95,29 @@ def create_swarm_dynamics_plot(swarm_report: Dict[str, Any], figsize: Tuple[int,
     axes[0, 0].legend()
     axes[0, 0].grid(True, alpha=0.3)
 
-    # Plot 2: Mutual Information over time
+    # Plot 2: Mutual Information + new MI metrics
     mi_values = [r.get('mutual_information', 0) for r in rounds]
-    axes[0, 1].plot(range(len(rounds)), mi_values, marker='o', color=COLORS['primary'], linewidth=2)
+    mi_norm_values = [r.get('mi_norm', np.nan) for r in rounds]
+    mi_cum_abs_values = [r.get('mi_cum_abs', np.nan) for r in rounds]
+    mi_loss_values = [r.get('mi_loss', 0.0) for r in rounds]
+    t_range = range(len(rounds))
+
+    axes[0, 1].plot(t_range, mi_values, marker='o', color=COLORS['primary'], linewidth=2, label='MI')
+    # Secondary normalized MI line (scaled if magnitude differs)
+    if any(not np.isnan(v) for v in mi_norm_values):
+        axes[0, 1].plot(t_range, mi_norm_values, linestyle='--', color=COLORS['secondary'], label='MI Norm')
+    # Cumulative absolute change line
+    if any(not np.isnan(v) for v in mi_cum_abs_values):
+        axes[0, 1].plot(t_range, mi_cum_abs_values, linestyle=':', color=COLORS['accent'], label='MI Cum |Δ|')
+    # Highlight per-round MI loss (negative deltas) as red bars at bottom
+    loss_heights = [lv if lv > 0 else 0 for lv in mi_loss_values]
+    if any(lh > 0 for lh in loss_heights):
+        axes[0, 1].bar(t_range, [-lh for lh in loss_heights], color='#B22222', alpha=0.35, label='MI Loss (neg Δ)')
+
     axes[0, 1].set_xlabel('Round')
     axes[0, 1].set_ylabel('Mutual Information')
-    axes[0, 1].set_title('Mutual Information Evolution')
+    axes[0, 1].set_title('Mutual Information & Derived Metrics')
+    axes[0, 1].legend()
     axes[0, 1].grid(True, alpha=0.3)
 
     # Plot 3: Entropy over time
@@ -121,6 +142,8 @@ def create_swarm_dynamics_plot(swarm_report: Dict[str, Any], figsize: Tuple[int,
 
 def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tuple[int, int] = None) -> Tuple[plt.Figure, plt.Axes]:
     """Create value-add experiment summary visualization.
+
+    Adds bootstrap 95% CI error bars for ΔNLL (mean delta across configs per domain).
 
     Args:
         experiment_data: Dictionary containing experiment data
@@ -159,29 +182,48 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
             ax.set_title(f'{domain.title()} Domain')
             continue
 
-        # Extract delta means for each condition
-        condition_means = {}
+        # Extract per-config delta means & bootstrap CI for each condition
+        condition_stats = {}
         for condition in conditions:
-            deltas = [exp.get(condition, {}).get('delta_mean', 0)
-                     for exp in domain_data]
-            condition_means[condition] = np.mean(deltas) if deltas else 0
+            deltas = [exp.get(condition, {}).get('delta_mean')
+                      for exp in domain_data if exp.get(condition, {}).get('delta_mean') is not None]
+            if deltas:
+                mean_val = float(np.mean(deltas))
+                try:
+                    ci_lo, ci_hi = bootstrap_ci_mean(deltas, n_resamples=1000, ci=0.95, seed=42)
+                except Exception:
+                    ci_lo, ci_hi = mean_val, mean_val
+            else:
+                mean_val = 0.0
+                ci_lo, ci_hi = 0.0, 0.0
+            condition_stats[condition] = {
+                'mean': mean_val,
+                'ci_lo': ci_lo,
+                'ci_hi': ci_hi,
+            }
 
-        # Create bar plot
+        # Create bar plot with error bars (CI)
         conditions_display = ['Trained', 'Placebo A\n(Random)', 'Placebo B\n(Shuffled)']
-        values = [condition_means['trained'], condition_means['placebo_a'], condition_means['placebo_b']]
+        values = [condition_stats[c]['mean'] for c in conditions]
+        yerr = [
+            [condition_stats[c]['mean'] - condition_stats[c]['ci_lo'] for c in conditions],
+            [condition_stats[c]['ci_hi'] - condition_stats[c]['mean'] for c in conditions]
+        ]
         colors = [COLORS['primary'], COLORS['neutral'], COLORS['neutral']]
 
-        bars = ax.bar(conditions_display, values, color=colors, alpha=0.7)
+        bars = ax.bar(conditions_display, values, color=colors, alpha=0.75, yerr=yerr, capsize=4, linewidth=1.0, edgecolor='black')
 
-        # Add value labels
-        for j, (bar, value) in enumerate(zip(bars, values)):
+        # Add value labels (mean and CI span)
+        for bar, c in zip(bars, conditions):
             height = bar.get_height()
+            ci_lo = condition_stats[c]['ci_lo']
+            ci_hi = condition_stats[c]['ci_hi']
             ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                   f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+                   f"{height:.3f}\n[{ci_lo:.3f},{ci_hi:.3f}]", ha='center', va='bottom', fontsize=8)
 
         ax.set_title(f'{domain.title()} Domain')
-        ax.set_ylabel('ΔNLL (Mean)')
-        ax.grid(True, alpha=0.3)
+        ax.set_ylabel('ΔNLL (Mean, 95% CI)')
+        ax.grid(True, alpha=0.3, axis='y')
         ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
 
     plt.tight_layout()
@@ -258,29 +300,42 @@ def create_security_analysis_plot(experiment_data: Dict[str, Any], figsize: Tupl
 
         # Add value labels
         for i, (top, mean_rate) in enumerate(zip(unique_topologies, topology_means)):
-            axes[0].text(i, mean_rate + 0.01, f'{mean_rate:.3f}',
+            axes[0].text(int(i), mean_rate + 0.01, f'{mean_rate:.3f}',
                         ha='center', va='bottom', fontsize=9)
 
-    # Plot false positive vs false negative rates
+    # Plot false positive vs false negative rates or fallback
     if false_positive_rates and false_negative_rates:
         axes[1].scatter(false_positive_rates, false_negative_rates,
                        color=COLORS['accent'], alpha=0.7, s=50)
-
-        # Add reference lines
-        axes[1].axhline(y=0.05, color='red', linestyle='--', alpha=0.5, label='Target FP Rate (5%)')
-        axes[1].axvline(x=0.1, color='blue', linestyle='--', alpha=0.5, label='Target FN Rate (10%)')
-
+        # Ensure non-degenerate limits (especially if all zeros)
+        if all(fp == 0 for fp in false_positive_rates) and all(fn == 0 for fn in false_negative_rates):
+            axes[1].set_xlim(-0.01, 0.11)
+            axes[1].set_ylim(-0.01, 0.11)
+            perfect_msg = 'All FP/FN = 0\n(perfect classification on observed offers)'
+            axes[1].text(0.5, 0.6, perfect_msg, ha='center', va='center', fontsize=9,
+                         transform=axes[1].transAxes, bbox=dict(boxstyle='round', fc='white', ec='gray', alpha=0.6))
+        # Reference lines (still draw even if zeros only)
+        axes[1].axhline(y=0.05, color='red', linestyle='--', alpha=0.5, label='FN target 5%')
+        axes[1].axvline(x=0.1, color='blue', linestyle='--', alpha=0.5, label='FP target 10%')
         axes[1].set_xlabel('False Positive Rate')
         axes[1].set_ylabel('False Negative Rate')
         axes[1].set_title('Security Trade-off Analysis')
-        axes[1].legend()
+        axes[1].legend(loc='upper right')
         axes[1].grid(True, alpha=0.3)
-
-        # Add quadrant labels
-        axes[1].text(0.05, 0.15, 'Good Performance', fontsize=10, ha='center')
-        axes[1].text(0.05, 0.05, 'Low FP, High FN\n(False negatives)', fontsize=8, ha='center')
-        axes[1].text(0.15, 0.15, 'High FP, Low FN\n(False positives)', fontsize=8, ha='center')
-        axes[1].text(0.15, 0.05, 'Poor Performance', fontsize=8, ha='center')
+        # Quadrant labels in axis-fraction coordinates (corrected semantics)
+        # Bottom-left: Low FP, Low FN (Good)
+        axes[1].text(0.15, 0.10, 'Good\n(low FP, low FN)', fontsize=8, ha='center', va='center', transform=axes[1].transAxes)
+        # Top-left: Low FP, High FN
+        axes[1].text(0.15, 0.85, 'Low FP, High FN', fontsize=8, ha='center', va='center', transform=axes[1].transAxes)
+        # Bottom-right: High FP, Low FN
+        axes[1].text(0.80, 0.10, 'High FP, Low FN', fontsize=8, ha='center', va='center', transform=axes[1].transAxes)
+        # Top-right: High FP, High FN (Poor)
+        axes[1].text(0.80, 0.85, 'Poor\n(high FP, high FN)', fontsize=8, ha='center', va='center', transform=axes[1].transAxes)
+    else:
+        axes[1].text(0.5, 0.5, 'No FP/FN data to plot', ha='center', va='center', transform=axes[1].transAxes)
+        axes[1].set_title('Security Trade-off')
+        axes[1].set_xticks([])
+        axes[1].set_yticks([])
 
     plt.tight_layout()
     return fig, axes

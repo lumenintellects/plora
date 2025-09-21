@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 """Summarise Swarm Sim reports (v2) into a concise JSON/Markdown.
 
 Usage:
@@ -8,29 +7,28 @@ Usage:
 
 import argparse
 import json
+import math
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 from plora.stats import bootstrap_ci_mean
-from swarm.theory import predicted_rounds_spectral, cheeger_bounds, epidemic_threshold
+from swarm.theory import predicted_rounds_spectral
 from plora.te import transfer_entropy_discrete
 
 
 def _collect_reports(dir_: Path) -> List[dict]:
-    res = []
-    # v1 graph engine reports
-    for p in dir_.glob("swarm_graph_report_*.json"):
+    reps: list[dict] = []
+    for p in dir_.glob("swarm_graph_report_*.json"):  # legacy v1 (if present)
         try:
-            res.append(json.loads(p.read_text()))
+            reps.append(json.loads(p.read_text()))
         except Exception:
             pass
-    # v2 in-process reports
-    for p in dir_.glob("swarm_v2_report_*.json"):
+    for p in dir_.glob("swarm_v2_report_*.json"):  # v2 reports
         try:
-            res.append(json.loads(p.read_text()))
+            reps.append(json.loads(p.read_text()))
         except Exception:
             pass
-    return res
+    return reps
 
 
 def _summarise(rep: dict) -> dict:
@@ -38,69 +36,72 @@ def _summarise(rep: dict) -> dict:
     final = rep.get("final", {})
     gate = final.get("gate", {})
     rounds = rep.get("rounds", [])
-    # Unify coverage extraction
-    coverage = final.get("coverage")
-    if coverage is None and rounds:
-        coverage = rounds[-1].get("coverage")
-    # Unified fields with sensible defaults
-    # derive acceptance rate if rounds are present (v1 had fixed offers per round)
+
+    coverage = final.get("coverage") or (rounds[-1].get("coverage") if rounds else {})
+    N = meta.get("N")
     accepted_total = final.get("accepted_offers", 0)
-    offers_total = len(rounds) * meta.get("N", 0) if rounds else 0
+    offers_total = (len(rounds) * N) if (rounds and N) else 0
     acceptance_rate = (accepted_total / offers_total) if offers_total else None
 
-    # MI summary if available in rounds
-    mi_vals = [
-        r.get("mutual_information", None)
-        for r in rounds
-        if r.get("mutual_information", None) is not None
-    ]
+    # Mutual information metrics per round
+    mi_vals = [r.get("mutual_information") for r in rounds if r.get("mutual_information") is not None]
     mi_deltas = [r.get("mi_delta", 0.0) for r in rounds]
+    mi_losses = [r.get("mi_loss", 0.0) for r in rounds]
+    mi_cum_abs_list = [r.get("mi_cum_abs") for r in rounds if r.get("mi_cum_abs") is not None]
+    mi_norm_vals = [r.get("mi_norm") for r in rounds if r.get("mi_norm") is not None]
+
     mi_ci = None
     if mi_deltas:
-        lo, hi = bootstrap_ci_mean(
-            [float(x) for x in mi_deltas], n_resamples=500, ci=0.95, seed=42
-        )
-        mi_ci = [lo, hi]
+        try:
+            lo, hi = bootstrap_ci_mean([float(x) for x in mi_deltas], n_resamples=500, ci=0.95, seed=42)
+            mi_ci = [lo, hi]
+        except Exception:
+            mi_ci = None
+
     mi_final = mi_vals[-1] if mi_vals else None
     mi_max = max(mi_vals) if mi_vals else None
     mi_min = min(mi_vals) if mi_vals else None
 
-    # Simple TE estimate between first two domains using coverage series
-    te_ab = None
+    # Aggregated MI activity metrics
+    mi_cum_abs = mi_cum_abs_list[-1] if mi_cum_abs_list else (sum(abs(x) for x in mi_deltas) if mi_deltas else None)
+    mi_total_loss = sum(mi_losses) if mi_losses else None
+    try:
+        _D = len(meta.get("domains") or [])
+        denom = math.log2(max(2, (N or 0) * _D)) if (N and _D) else 1.0
+    except Exception:
+        denom = 1.0
+    mi_norm_final = (mi_norm_vals[-1] if mi_norm_vals else None) or ((mi_final / denom) if (mi_final is not None and denom > 0) else None)
+
+    # Simple transfer entropy estimate (first two domains if available)
+    te_pair = None
     doms = meta.get("domains") or []
     if len(doms) >= 2 and rounds:
         d0, d1 = doms[0], doms[1]
-        s0 = [r.get("coverage", {}).get(d0, 0.0) for r in rounds]
-        s1 = [r.get("coverage", {}).get(d1, 0.0) for r in rounds]
+        series0 = [r.get("coverage", {}).get(d0, 0.0) for r in rounds]
+        series1 = [r.get("coverage", {}).get(d1, 0.0) for r in rounds]
         try:
-            te_ab = transfer_entropy_discrete(s0, s1, k=1, bins=8)
+            te_pair = transfer_entropy_discrete(series0, series1, k=1, bins=8)
         except Exception:
-            te_ab = None
+            te_pair = None
 
-    # Theory predictions and deltas with simple CIs where possible
-    lam2 = meta.get("lambda2")
-    n_agents = meta.get("N")
+    # Theory prediction
     theory = {}
+    lam2 = meta.get("lambda2")
     try:
-        if lam2 is not None and n_agents is not None:
-            t_pred = predicted_rounds_spectral(int(n_agents), float(lam2))
+        if lam2 is not None and N is not None:
+            t_pred = predicted_rounds_spectral(int(N), float(lam2))
             t_obs = final.get("observed_t_all")
             if t_obs is not None:
                 theory["t_pred"] = t_pred
                 theory["t_obs"] = t_obs
                 theory["t_delta"] = float(t_obs - t_pred)
-        # Placeholders for Cheeger/threshold diagnostics: allow presence if extended inputs exist
-        if "cheeger" in meta:
-            theory["cheeger_bounds"] = meta.get("cheeger")
-        if "epidemic_threshold" in meta:
-            theory["epidemic_threshold"] = meta.get("epidemic_threshold")
     except Exception:
         pass
 
     return {
-        "N": meta.get("N"),
+        "N": N,
         "topology": meta.get("topology"),
-        "lambda2": meta.get("lambda2"),
+        "lambda2": lam2,
         "observed_t_all": final.get("observed_t_all"),
         "predicted_t_all": final.get("predicted_t_all"),
         "acceptance_rate": acceptance_rate,
@@ -114,8 +115,11 @@ def _summarise(rep: dict) -> dict:
             "min": mi_min,
             "delta_sum": sum(mi_deltas) if mi_deltas else None,
             "delta_ci": mi_ci,
+            "cum_abs": mi_cum_abs,
+            "total_loss": mi_total_loss,
+            "norm_final": mi_norm_final,
         },
-        "te_pair": te_ab,
+        "te_pair": te_pair,
         "theory": theory,
         "gate": {
             "rejected_hash_total": gate.get("rejected_hash_total", 0),
