@@ -10,10 +10,7 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union, Tuple
-
-from .config import get as cfg
-
+from typing import Dict, Any
 
 def find_project_root() -> Path:
     """Find the project root by looking for pyproject.toml or Makefile."""

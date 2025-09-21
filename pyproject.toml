@@ -24,6 +24,8 @@ matplotlib = "*"
 seaborn = "*"
 notebook = "^7.4.5"
 scipy = "*"
+scikit-learn = "*"
+pandas = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "8.2.0"

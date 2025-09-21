@@ -9,8 +9,7 @@ color schemes, and layouts for the experiment analysis notebook.
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, Any, Tuple
 from pathlib import Path
 
 # Set consistent plotting style
@@ -178,7 +177,7 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
         for j, (bar, value) in enumerate(zip(bars, values)):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                   f'{value".3f"}', ha='center', va='bottom', fontsize=9)
+                   f'{value:.3f}', ha='center', va='bottom', fontsize=9)
 
         ax.set_title(f'{domain.title()} Domain')
         ax.set_ylabel('ΔNLL (Mean)')
@@ -259,7 +258,7 @@ def create_security_analysis_plot(experiment_data: Dict[str, Any], figsize: Tupl
 
         # Add value labels
         for i, (top, mean_rate) in enumerate(zip(unique_topologies, topology_means)):
-            axes[0].text(i, mean_rate + 0.01, f'{mean_rate".3f"}',
+            axes[0].text(i, mean_rate + 0.01, f'{mean_rate:.3f}',
                         ha='center', va='bottom', fontsize=9)
 
     # Plot false positive vs false negative rates
@@ -351,7 +350,7 @@ def create_scalability_analysis_plot(experiment_data: Dict[str, Any], figsize: T
         p = np.poly1d(z)
         axes[0].plot(sorted(set(agent_counts)),
                     [p(x) for x in sorted(set(agent_counts))],
-                    "r--", alpha=0.8, label=f'Trend: {z[0]".2f"}x + {z[1]".2f"}')
+                    "r--", alpha=0.8, label=f'Trend: {z[0]:.2f}x + {z[1]:.2f}')
         axes[0].legend()
 
     # Plot 2: Acceptance rate vs agent count
