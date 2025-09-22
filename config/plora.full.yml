@@ -2,7 +2,7 @@
 
 # base_model: Hugging Face model id for training and evaluation.
 # Meaning: Backbone LM used across training, value-add, and metrics.
-# Options: any causal LM (e.g., google/gemma-3-1b-it for CPU; google/gemma-3-1b-it for better quality).
+# Options: any causal LM.
 # Rationale: Pick a model that fits GPU RAM and desired quality.
 base_model: google/gemma-3-1b-it
 
@@ -83,7 +83,7 @@ value_add:
   schemes: [attention, mlp, all]
   # seeds: RNG seeds for repeatability; more seeds → more robust stats.
   # Options: list of integers; e.g., [41,42,43].
-  # Rationale: Three seeds recommended for significance.
+  # Rationale: Three seeds for significance.
   seeds: [41, 42, 43]
   # placebo_b_rank: Rank for label-shuffle placebo; choose moderate rank for parity with main grid lower bound.
   placebo_b_rank: 4

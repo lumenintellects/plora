@@ -4,16 +4,16 @@
 
 | Cell | r | scheme | ΔNLL | p | 95% CI | split |
 |---|---|---|---|---|---|---|
-| trained_seed41 | 1 | all | **-0.822** | 6.909e-77 | [-0.851, -0.794] | validation |
+| trained_seed41 | 1 | all | **-0.825** | 2.049e-43 | [-0.853, -0.796] | validation |
 
 ## Domain: legal
 
 | Cell | r | scheme | ΔNLL | p | 95% CI | split |
 |---|---|---|---|---|---|---|
-| trained_seed41 | 1 | all | **-0.347** | 1.727e-77 | [-0.366, -0.326] | validation |
+| trained_seed41 | 1 | all | **-0.340** | 9.754e-44 | [-0.356, -0.322] | validation |
 
 ## Domain: medical
 
 | Cell | r | scheme | ΔNLL | p | 95% CI | split |
 |---|---|---|---|---|---|---|
-| trained_seed41 | 1 | all | -0.016 | 7.605e-05 | [-0.039, 0.005] | validation |
+| trained_seed41 | 1 | all | **-0.048** | 3.846e-07 | [-0.064, -0.032] | validation |

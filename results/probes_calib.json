@@ -1,0 +1,7 @@
+{
+  "tau_trigger": 0.2,
+  "tau_clean_delta": -0.05,
+  "tau_tensor_z": 5.0,
+  "target_fp": 0.05,
+  "target_fn": 0.1
+}
