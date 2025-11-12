@@ -3,172 +3,120 @@
     "topology": "erdos_renyi",
     "N": 6,
     "domains": [
+      "medical",
       "arithmetic",
-      "legal",
-      "medical"
+      "legal"
     ],
     "seed": 42,
-    "p": 0.3,
-    "lambda2": 0.7639320225002098
+    "p": 0.25,
+    "lambda2": 0.6972243622680052
   },
   "rounds": [
     {
       "t": 0,
       "coverage": {
-        "arithmetic": 0.6666666666666666,
-        "legal": 0.8333333333333334,
-        "medical": 0.5
+        "medical": 0.3333333333333333,
+        "arithmetic": 0.3333333333333333,
+        "legal": 0.3333333333333333
       },
-      "entropy_avg": 0.8561060852342811,
-      "mutual_information": 0.42877058564388815,
+      "entropy_avg": 0.9182958340544896,
+      "mutual_information": 1.5849625007211556,
       "mi_delta": 0.0,
       "mi_loss": 0.0,
       "mi_cum_abs": 0.0,
-      "mi_norm": 0.10282453173512307,
-      "accepted": [
-        [
-          0,
-          2,
-          "arithmetic"
-        ],
-        [
-          4,
-          3,
-          "legal"
-        ],
-        [
-          0,
-          4,
-          "arithmetic"
-        ],
-        [
-          4,
-          2,
-          "legal"
-        ],
-        [
-          4,
-          0,
-          "legal"
-        ],
-        [
-          5,
-          3,
-          "medical"
-        ]
-      ]
+      "mi_norm": 0.38009376671593414,
+      "accepted": []
     },
     {
       "t": 1,
       "coverage": {
-        "arithmetic": 0.8333333333333334,
-        "legal": 0.8333333333333334,
-        "medical": 0.8333333333333334
+        "medical": 0.3333333333333333,
+        "arithmetic": 0.3333333333333333,
+        "legal": 0.3333333333333333
       },
-      "entropy_avg": 0.6500224216483541,
-      "mutual_information": 0.18365916681089794,
-      "mi_delta": -0.2451114188329902,
-      "mi_loss": 0.2451114188329902,
-      "mi_cum_abs": 0.2451114188329902,
-      "mi_norm": 0.04404375780076934,
-      "accepted": [
-        [
-          3,
-          4,
-          "medical"
-        ],
-        [
-          3,
-          0,
-          "medical"
-        ],
-        [
-          4,
-          1,
-          "arithmetic"
-        ]
-      ]
+      "entropy_avg": 0.9182958340544896,
+      "mutual_information": 1.5849625007211556,
+      "mi_delta": 0.0,
+      "mi_loss": 0.0,
+      "mi_cum_abs": 0.0,
+      "mi_norm": 0.38009376671593414,
+      "accepted": []
     },
     {
       "t": 2,
       "coverage": {
-        "arithmetic": 0.8333333333333334,
-        "legal": 0.8333333333333334,
-        "medical": 1.0
+        "medical": 0.3333333333333333,
+        "arithmetic": 0.3333333333333333,
+        "legal": 0.3333333333333333
       },
-      "entropy_avg": 0.4333482810989027,
-      "mutual_information": 0.093531658498881,
-      "mi_delta": -0.09012750831201695,
-      "mi_loss": 0.09012750831201695,
-      "mi_cum_abs": 0.33523892714500714,
-      "mi_norm": 0.022430057726824788,
-      "accepted": [
-        [
-          4,
-          1,
-          "medical"
-        ]
-      ]
+      "entropy_avg": 0.9182958340544896,
+      "mutual_information": 1.5849625007211556,
+      "mi_delta": 0.0,
+      "mi_loss": 0.0,
+      "mi_cum_abs": 0.0,
+      "mi_norm": 0.38009376671593414,
+      "accepted": []
     },
     {
       "t": 3,
       "coverage": {
-        "arithmetic": 0.8333333333333334,
-        "legal": 0.8333333333333334,
-        "medical": 1.0
+        "medical": 0.3333333333333333,
+        "arithmetic": 0.3333333333333333,
+        "legal": 0.3333333333333333
       },
-      "entropy_avg": 0.4333482810989027,
-      "mutual_information": 0.093531658498881,
+      "entropy_avg": 0.9182958340544896,
+      "mutual_information": 1.5849625007211556,
       "mi_delta": 0.0,
       "mi_loss": 0.0,
-      "mi_cum_abs": 0.33523892714500714,
-      "mi_norm": 0.022430057726824788,
+      "mi_cum_abs": 0.0,
+      "mi_norm": 0.38009376671593414,
       "accepted": []
     },
     {
       "t": 4,
       "coverage": {
-        "arithmetic": 0.8333333333333334,
-        "legal": 0.8333333333333334,
-        "medical": 1.0
+        "medical": 0.3333333333333333,
+        "arithmetic": 0.3333333333333333,
+        "legal": 0.3333333333333333
       },
-      "entropy_avg": 0.4333482810989027,
-      "mutual_information": 0.093531658498881,
+      "entropy_avg": 0.9182958340544896,
+      "mutual_information": 1.5849625007211556,
       "mi_delta": 0.0,
       "mi_loss": 0.0,
-      "mi_cum_abs": 0.33523892714500714,
-      "mi_norm": 0.022430057726824788,
+      "mi_cum_abs": 0.0,
+      "mi_norm": 0.38009376671593414,
       "accepted": []
     }
   ],
   "final": {
     "coverage": {
-      "arithmetic": 0.8333333333333334,
-      "legal": 0.8333333333333334,
-      "medical": 1.0
+      "medical": 0.3333333333333333,
+      "arithmetic": 0.3333333333333333,
+      "legal": 0.3333333333333333
     },
     "bytes_on_wire": 0,
-    "accepted_offers": 10,
+    "accepted_offers": 0,
     "gate": {
       "rejected_hash_total": 0,
-      "rejected_safety_total": 12,
-      "accepted_clean_total": 10,
+      "rejected_safety_total": 56,
+      "accepted_clean_total": 0,
       "accepted_trojan_total": 0,
-      "rejected_clean_total": 0,
-      "rejected_trojan_total": 12,
+      "rejected_clean_total": 28,
+      "rejected_trojan_total": 28,
       "false_negatives": 0,
-      "false_positives": 0,
+      "false_positives": 28,
       "rejection_reasons": {
-        "trigger_rate_high": 12
+        "rank_not_allowed": 56,
+        "trigger_rate_high": 28
       }
     },
     "bytes_per_offer": 0,
     "rounds_to_diffuse": {
+      "medical": null,
       "arithmetic": null,
-      "legal": null,
-      "medical": 2
+      "legal": null
     },
-    "observed_t_all": 2,
-    "predicted_t_all": 5
+    "observed_t_all": null,
+    "predicted_t_all": 6
   }
 }

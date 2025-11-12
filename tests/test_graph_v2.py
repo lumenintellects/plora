@@ -82,3 +82,4 @@ def test_weighted_and_temporal_helpers():
     # temporal dropout reduces edges on odd t
     adj2 = apply_temporal_dropout(adj, t=1)
     assert sum(len(x) for x in adj2) <= sum(len(x) for x in adj)
+

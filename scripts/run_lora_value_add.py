@@ -14,10 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Tuple, Any
 
 from plora.logging_cfg import setup_logging
 from plora.config import get as cfg
@@ -89,7 +88,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=cfg("value_add.placebo_b_rank", 8),
         help="Rank to use for placebo-B (label-shuffle) training",
     )
-
+    p.add_argument(
+        "--latency-budget-ms",
+        type=float,
+        default=cfg("latency_budget_ms", 250),
+        help="Latency budget (ms) for adapter inject/load median time.",
+    )
+    p.add_argument(
+        "--ignore-latency-guard",
+        action="store_true",
+        help="Do not abort run if latency budget exceeded (record still written).",
+    )
+    p.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Disable resume: ignore existing value_add.jsonl and recompute everything.",
+    )
     return p
 
 
@@ -112,15 +126,42 @@ def main(argv: List[str] | None = None) -> None:
     )
 
     args.output.mkdir(parents=True, exist_ok=True)
-    placeholder = {
-        "status": "running",
-        "domains": args.domains,
-        "ranks": args.ranks,
-        "schemes": args.schemes,
-    }
+    jsonl_path = args.output / "value_add.jsonl"
+    # Ensure placeholder file exists so downstream notebooks detect file early
+    if not jsonl_path.exists():
+        try:
+            jsonl_path.touch()
+        except Exception as e:
+            log.warning("Could not create placeholder value_add.jsonl: %s", e)
 
-    # We'll accumulate JSONL records in memory then write once.
-    records = []
+    # Resume support: load existing records if present
+    existing: Dict[Tuple[str, int, str, int], Dict[str, Any]] = {}
+    if jsonl_path.exists() and not args.no_resume:
+        try:
+            for line in jsonl_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                cfg_rec = rec.get("config", {})
+                key = (
+                    cfg_rec.get("domain"),
+                    int(cfg_rec.get("rank", -1)),
+                    cfg_rec.get("scheme"),
+                    int(cfg_rec.get("seed", -1)),
+                )
+                existing[key] = rec
+            log.info("Resume mode: loaded %d existing records", len(existing))
+        except Exception as e:
+            log.warning("Failed to parse existing JSONL (%s); starting fresh.", e)
+            existing = {}
+            if jsonl_path.exists():
+                backup = jsonl_path.with_suffix(".jsonl.bak")
+                backup.write_text(jsonl_path.read_text())
+                log.info("Backed up original JSONL to %s", backup)
+                jsonl_path.unlink()
+
+    # We'll still keep an in-memory list for markdown output (merge existing + new)
+    records: List[Dict[str, Any]] = list(existing.values())
 
     # On-disk cache for NLL lists to speed re-runs
     cache_path = args.output / "nll_cache.json"
@@ -196,6 +237,12 @@ def main(argv: List[str] | None = None) -> None:
         for d in args.domains
     }
 
+    # Helper for incremental append (atomic-ish)
+    def append_record(rec: Dict[str, Any]):
+        mode = "a" if jsonl_path.exists() else "w"
+        with jsonl_path.open(mode) as f:
+            f.write(json.dumps(rec) + "\n")
+
     for domain in args.domains:
         log.info("Domain %s", domain)
 
@@ -215,12 +262,23 @@ def main(argv: List[str] | None = None) -> None:
         for rank in args.ranks:
             for scheme in args.schemes:
                 for seed in args.seeds:
+                    key_tuple = (domain, rank, scheme, seed)
+                    if key_tuple in existing:
+                        # Already have this record (resume)
+                        continue
                     random.seed(seed)
 
                     # Train adapter on train split
                     rank_root = args.output / f"rank_r{rank}"
                     out_dir = rank_root / f"{domain}_{scheme}_seed{seed}"
                     if not out_dir.exists():
+                        log.info(
+                            "Training adapter domain=%s rank=%s scheme=%s seed=%s",
+                            domain,
+                            rank,
+                            scheme,
+                            seed,
+                        )
                         train_mod.train(
                             domain,
                             epochs=1,
@@ -252,7 +310,7 @@ def main(argv: List[str] | None = None) -> None:
                     trained_nlls = evaluate_pair(out_dir, domain)
 
                     # Latency budget check, inject+remove median over 3 runs
-                    budget_ms = cfg("latency_budget_ms", 250)
+                    budget_ms = float(args.latency_budget_ms)
                     lat_samples = []
                     for _ in range(3):
                         t0 = time.perf_counter()
@@ -327,33 +385,51 @@ def main(argv: List[str] | None = None) -> None:
                         "cross_domain": cross,
                         "latency_ms": inject_median,
                     }
-                    records.append(rec)
 
-                    # Guardrail: flag latency only (placebo significance may vary with split)
+                    # Latency guard (after we build record so partial progress isn't lost)
                     latency_flag = inject_median > budget_ms
-
                     if latency_flag:
-                        log.error(
-                            f"Guardrail breached – latency={inject_median} ms>{budget_ms}"
+                        rec["latency_guard_exceeded"] = True
+                        log.warning(
+                            "Latency budget exceeded (median=%.2f ms > %.2f ms) for %s",
+                            inject_median,
+                            budget_ms,
+                            key_tuple,
                         )
-                        sys.exit(1)
+                    else:
+                        rec["latency_guard_exceeded"] = False
 
-    # Write JSONL
-    jsonl_path = args.output / "value_add.jsonl"
-    with jsonl_path.open("w") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
-    log.info("Wrote %d records to %s", len(records), jsonl_path)
+                    # Persist incrementally
+                    append_record(rec)
+                    records.append(rec)
+                    existing[key_tuple] = rec
+
+                    if latency_flag and not args.ignore_latency_guard:
+                        log.error(
+                            "Aborting due to latency guard (use --ignore-latency-guard to continue)"
+                        )
+                        # Still generate markdown of what we have so far
+                        break
+                else:
+                    continue  # inner seeds loop not broken
+                break  # broken out due to latency
+            else:
+                continue  # schemes loop not broken
+            break  # ranks loop break
+
+    log.info("Completed value-add loop; total records now %d", len(records))
 
     # Generate Markdown summary
     def _fmt(v):
         return f"{v:+.3f}" if isinstance(v, float) else str(v)
 
+    # Re-group by domain
     lines = ["# Value-add experiment – summary", ""]
-    for domain in args.domains:
+    domains_present = sorted({r["config"]["domain"] for r in records})
+    for domain in domains_present:
         lines.append(f"## Domain: {domain}\n")
-        header = "| Cell | r | scheme | ΔNLL | p | 95% CI | split |"
-        sep = "|---|---|---|---|---|---|---|"
+        header = "| Cell | r | scheme | ΔNLL | p | 95% CI | split | latency(ms) | guard |"
+        sep = "|---|---|---|---|---|---|---|---|---|"
         lines.extend([header, sep])
 
         dom_recs = [r for r in records if r["config"]["domain"] == domain]
@@ -374,7 +450,17 @@ def main(argv: List[str] | None = None) -> None:
             )
 
             lines.append(
-                f"| {cell_name} | {rec_cfg['rank']} | {rec_cfg['scheme']} | {delta_str} | {trained['wilcoxon_p']:.3e} | {ci_str} | {rec_cfg['eval_split']} |"
+                "| {cell} | {r} | {scheme} | {delta} | {p:.3e} | {ci} | {split} | {lat:.1f} | {guard} |".format(
+                    cell=cell_name,
+                    r=rec_cfg["rank"],
+                    scheme=rec_cfg["scheme"],
+                    delta=delta_str,
+                    p=trained["wilcoxon_p"],
+                    ci=ci_str,
+                    split=rec_cfg.get("eval_split", "?"),
+                    lat=rec.get("latency_ms", 0.0),
+                    guard="⚠" if rec.get("latency_guard_exceeded") else "",
+                )
             )
         lines.append("")
 

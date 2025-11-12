@@ -34,7 +34,7 @@ domains: [arithmetic, legal, medical]
 # Meaning: Only adapters with these ranks will pass policy.
 # Options: list of positive integers (e.g., [1,4,8,16]).
 # Rationale: Includes higher ranks to test capacity.
-allowed_ranks: [1, 4, 8, 16]
+allowed_ranks: [4, 8, 16]
 
 # allowed_targets: Target-module whitelist for Security Gate.
 # Meaning: Restricts LoRA target modules (suffix-based); "attention" maps to ATTENTION_SUFFIXES.

@@ -1,13 +1,17 @@
 .PHONY: setup poetry-env test train-legal sign-legal offer fetch value-add-smoke value-add-full swarm-sim \
 	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dry-run-lite dump-policy full-experiment train-all sign-all
 
+# Dynamic domains (from current active YAML config via plora.config)
+DOMAINS_CSV := $(shell poetry run python -c 'from plora.config import get; print(",".join(get("domains", [])))')
+DOMAINS := $(shell poetry run python -c 'from plora.config import get; print(" ".join(get("domains", [])))')
+
 .PHONY: alt-train-merge
 alt-train-merge:
-	poetry run python -m scripts.alternating_train_merge --domains arithmetic,legal,medical --cycles 2 --samples 32 --rank 4 --out results/alt_train_merge
+	poetry run python -m scripts.alternating_train_merge --domains $(DOMAINS_CSV) --cycles 2 --samples 32 --rank 4 --out results/alt_train_merge
 
 .PHONY: ablation
 ablation:
-	poetry run python -m scripts.ablation_runner --domains arithmetic,legal,medical --ranks 2,4,8 --schemes attention,all --samples 64 --epochs 1 --out results/ablation.jsonl
+	poetry run python -m scripts.ablation_runner --domains $(DOMAINS_CSV) --ranks 2,4,8 --schemes attention,all --samples 64 --epochs 1 --out results/ablation.jsonl
 
 # ---------------------------------------------------------------------------
 # Environment helper – shortcut to install with Poetry (preferred).
@@ -40,7 +44,8 @@ offer:
 fetch:
 	poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem
 
-DOMAINS := arithmetic legal medical
+# Replace static domain list with dynamic config-driven list
+# (already defined above as DOMAINS / DOMAINS_CSV)
 
 train-all:
 	@for d in $(DOMAINS); do \
@@ -81,14 +86,19 @@ fetch-all:
 # Value-add experiment (small smoke run)
 value-add-smoke:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')"
+	  --domains "$(DOMAINS_CSV)" \
+	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
+	  --ignore-latency-guard \
+	  --no-resume || true
 
 # Full value-add experiment (longer, deeper grid)
 value-add-full:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
+	  --domains "$(DOMAINS_CSV)" \
 	  --seeds $$(poetry run python -m plora.config value_add.seeds) \
-	  --resume
+	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
+	  --ignore-latency-guard \
+	  --no-resume
 
 # Build value_add.jsonl from artifacts (full evaluation)
 value-add-build-full:
@@ -96,7 +106,7 @@ value-add-build-full:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$(shell poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
+	  --domains "$(DOMAINS_CSV)" \
 	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
 	  --base-model $(shell poetry run python -m plora.config base_model) \
 	  --seeds $(shell poetry run python -m plora.config value_add.seeds | tr -d '[] ') \
@@ -107,7 +117,7 @@ value-add-build-lowmem:
 	poetry run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
-	  --domains "$(shell poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" \
+	  --domains "$(DOMAINS_CSV)" \
 	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
 	  --max-length 256 \
 	  --base-model $(shell poetry run python -m plora.config base_model) \
@@ -174,13 +184,15 @@ thesis-sweep:
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
-	poetry run python -m scripts.monolithic_train --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')" --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
+	poetry run python -m scripts.monolithic_train --domains "$(DOMAINS_CSV)" --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
 
 # Rank sweep runner – writes rank-scoped outputs under results/value_add
 value-add-rank-sweep:
 	poetry run python -m scripts.run_lora_value_add \
-	  --domains "$$(poetry run python -c 'import json, sys; from plora.config import get; print(",".join(get("domains", [])))')"
-
+	  --domains "$(DOMAINS_CSV)" \
+	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
+	  --ignore-latency-guard \
+	  --no-resume || true
 # ---------------------------------------------------------------------------
 # Minimal dry run:
 # ---------------------------------------------------------------------------

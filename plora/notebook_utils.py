@@ -266,11 +266,11 @@ def extract_value_add_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
     records = []
 
     for exp in value_add_data:
-        config = exp.get('config', {})
-        trained = exp.get('trained', {})
-        placebo_a = exp.get('placebo_a', {})
-        placebo_b = exp.get('placebo_b', {})
-        cross_domain = exp.get('cross_domain', {})
+        config = exp.get('config', {}) or {}
+        trained = exp.get('trained', {}) or {}
+        placebo_a = exp.get('placebo_a') or {}
+        placebo_b = exp.get('placebo_b') or {}
+        cross_domain = exp.get('cross_domain') or {}
 
         record = {
             'domain': config.get('domain'),
@@ -279,18 +279,20 @@ def extract_value_add_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
             'seed': config.get('seed'),
             'eval_split': config.get('eval_split'),
             'trained_delta_mean': trained.get('delta_mean', 0),
-            'trained_wilcoxon_p': trained.get('wilcoxon_p', 0),
-            'trained_ci_low': trained.get('ci', [0, 0])[0],
-            'trained_ci_high': trained.get('ci', [0, 0])[1],
+            'trained_wilcoxon_p': trained.get('wilcoxon_p', 1.0),
+            'trained_ci_low': (trained.get('ci') or [0, 0])[0],
+            'trained_ci_high': (trained.get('ci') or [0, 0])[1],
             'placebo_a_delta_mean': placebo_a.get('delta_mean', 0),
-            'placebo_a_wilcoxon_p': placebo_a.get('wilcoxon_p', 0),
+            'placebo_a_wilcoxon_p': placebo_a.get('wilcoxon_p', 1.0),
             'placebo_b_delta_mean': placebo_b.get('delta_mean', 0),
-            'placebo_b_wilcoxon_p': placebo_b.get('wilcoxon_p', 0),
+            'placebo_b_wilcoxon_p': placebo_b.get('wilcoxon_p', 1.0),
             'latency_ms': exp.get('latency_ms', 0),
         }
 
         # Add cross-domain metrics
         for other_domain, metrics in cross_domain.items():
+            if not isinstance(metrics, dict):
+                continue
             record[f'cross_{other_domain}_delta_mean'] = metrics.get('delta_mean', 0)
 
         records.append(record)
