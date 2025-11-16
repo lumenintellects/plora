@@ -1,47 +1,161 @@
 [
   {
-    "N": 6,
-    "topology": "erdos_renyi",
-    "lambda2": 0.6972243622680052,
-    "observed_t_all": null,
-    "predicted_t_all": 6,
-    "acceptance_rate": 0.0,
-    "t_all": null,
-    "bytes_on_wire": 0,
-    "accepted_offers": 0,
-    "coverage": {
-      "medical": 0.3333333333333333,
-      "arithmetic": 0.3333333333333333,
-      "legal": 0.3333333333333333
-    },
-    "mi": {
-      "final": 1.5849625007211556,
-      "max": 1.5849625007211556,
-      "min": 1.5849625007211556,
-      "delta_sum": 0.0,
-      "delta_ci": [
-        0.0,
-        0.0
+    "type": "swarm_v2",
+    "meta": {
+      "topology": "erdos_renyi",
+      "N": 6,
+      "domains": [
+        "arithmetic",
+        "legal",
+        "medical"
       ],
-      "cum_abs": 0.0,
-      "total_loss": 0.0,
-      "norm_final": 0.38009376671593414
+      "seed": 42,
+      "p": 0.25,
+      "lambda2": 0.6972243622680052
     },
-    "te_pair": 0.0,
-    "theory": {},
-    "gate": {
-      "rejected_hash_total": 0,
-      "rejected_safety_total": 56,
-      "accepted_clean_total": 0,
-      "accepted_trojan_total": 0,
-      "rejected_clean_total": 28,
-      "rejected_trojan_total": 28,
-      "false_negatives": 0,
-      "false_positives": 28,
-      "rejection_reasons": {
-        "rank_not_allowed": 56,
-        "trigger_rate_high": 28
+    "final": {
+      "coverage": {
+        "arithmetic": 0.8333333333333334,
+        "legal": 0.8333333333333334,
+        "medical": 1.0
+      },
+      "bytes_on_wire": 0,
+      "accepted_offers": 10,
+      "gate": {
+        "rejected_hash_total": 0,
+        "rejected_safety_total": 15,
+        "accepted_clean_total": 10,
+        "accepted_trojan_total": 0,
+        "rejected_clean_total": 0,
+        "rejected_trojan_total": 15,
+        "false_negatives": 0,
+        "false_positives": 0,
+        "rejection_reasons": {
+          "trigger_rate_high": 15
+        }
+      },
+      "bytes_per_offer": 0,
+      "rounds_to_diffuse": {
+        "arithmetic": null,
+        "legal": null,
+        "medical": 3
+      },
+      "observed_t_all": 3,
+      "predicted_t_all": 6
+    },
+    "rounds": 5
+  },
+  {
+    "type": "spectral_calibration",
+    "topology": "er",
+    "points": [
+      {
+        "topology": "er",
+        "n": 20,
+        "lambda2": 0.7795956272670448,
+        "t_all": 2,
+        "C_hat": 0.5204708272159251,
+        "rounds": 200,
+        "params": {
+          "p": 0.25,
+          "k": 4,
+          "m": 2
+        }
+      },
+      {
+        "topology": "er",
+        "n": 40,
+        "lambda2": 3.854183087881751,
+        "t_all": 2,
+        "C_hat": 2.0896226812635277,
+        "rounds": 400,
+        "params": {
+          "p": 0.25,
+          "k": 4,
+          "m": 2
+        }
+      },
+      {
+        "topology": "er",
+        "n": 80,
+        "lambda2": 8.252115455337993,
+        "t_all": 1,
+        "C_hat": 1.8831732765020337,
+        "rounds": 800,
+        "params": {
+          "p": 0.25,
+          "k": 4,
+          "m": 2
+        }
+      },
+      {
+        "topology": "er",
+        "n": 160,
+        "lambda2": 22.455158476751198,
+        "t_all": 1,
+        "C_hat": 4.424510232407997,
+        "rounds": 1600,
+        "params": {
+          "p": 0.25,
+          "k": 4,
+          "m": 2
+        }
       }
+    ]
+  },
+  {
+    "type": "monolithic_baseline",
+    "plasmid_id": "monolithic-1763067129",
+    "base_model": "google/gemma-3-1b-it",
+    "rank": 4,
+    "metrics": {
+      "val_ppl_before": 44.762014220581364,
+      "val_ppl_after": 14.170491354217313,
+      "delta_ppl": -30.591522866364052
     }
+  },
+  {
+    "type": "value_add_domain_summary",
+    "domain": "arithmetic",
+    "count": 27,
+    "mean_delta": -0.49888623009342675,
+    "median_delta": -0.874344437610446,
+    "best_delta": -1.2160189144723996,
+    "worst_delta": 1.8236590361031961
+  },
+  {
+    "type": "value_add_domain_summary",
+    "domain": "legal",
+    "count": 27,
+    "mean_delta": -2.264191172038274,
+    "median_delta": -2.3238757862127386,
+    "best_delta": -2.6683128372533247,
+    "worst_delta": -1.1988148292293772
+  },
+  {
+    "type": "value_add_domain_summary",
+    "domain": "medical",
+    "count": 27,
+    "mean_delta": -0.522217694428508,
+    "median_delta": -0.840792486211285,
+    "best_delta": -1.2206951945554465,
+    "worst_delta": 2.91219740267843
+  },
+  {
+    "type": "network_information",
+    "agents": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "adaptive": {
+      "k": 3,
+      "bins": 4
+    },
+    "mi_threshold": 0.0,
+    "te_threshold": 0.0
   }
 ]

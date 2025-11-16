@@ -54,6 +54,7 @@ def main(argv: List[str] | None = None) -> None:
 
     rng = random.Random(ns.seed)
     records: List[dict] = []
+    base_n = min(ns.ns)
     for n in ns.ns:
         nbrs = build_graph(ns.topology, n, ns.p, ns.k, ns.m, seed=ns.seed + n)
         lam2 = spectral_gap(nbrs)
@@ -67,10 +68,16 @@ def main(argv: List[str] | None = None) -> None:
             agents.append(ag)
 
         history: List[dict[int, set[str]]] = []
+        # Capture initial knowledge before any gossip rounds so t=0 represents the
+        # pre-diffusion state (otherwise instantaneous diffusion would yield t_all=0).
+        history.append({ag.agent_id: set(ag.knowledge) for ag in agents})
 
         def _on_round(t: int, accepted_events: list[tuple[int, int, str]]):
             know = {ag.agent_id: set(ag.knowledge) for ag in agents}
             history.append(know)
+
+        # Scale rounds for larger graphs (ensure enough horizon for diffusion)
+        rounds_for_n = max(int(ns.rounds * max(1, n / base_n)), ns.rounds)
 
         # Run
         import asyncio
@@ -78,7 +85,7 @@ def main(argv: List[str] | None = None) -> None:
         asyncio.run(
             run_gossip(
                 agents,
-                rounds=ns.rounds,
+                rounds=rounds_for_n,
                 p=ns.p,
                 seed=ns.seed,
                 neighbours=nbrs,
@@ -111,6 +118,7 @@ def main(argv: List[str] | None = None) -> None:
                 "lambda2": lam2,
                 "t_all": t_all,
                 "C_hat": C_hat,
+                "rounds": rounds_for_n,
                 "params": {"p": ns.p, "k": ns.k, "m": ns.m},
             }
         )

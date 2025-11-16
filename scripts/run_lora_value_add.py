@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import List, Dict, Tuple, Any
@@ -127,6 +128,15 @@ def main(argv: List[str] | None = None) -> None:
 
     args.output.mkdir(parents=True, exist_ok=True)
     jsonl_path = args.output / "value_add.jsonl"
+    if args.no_resume and jsonl_path.exists():
+        try:
+            jsonl_path.unlink()
+        except Exception as exc:
+            log.warning(
+                "Failed to remove %s before --no-resume run; appends may be stale: %s",
+                jsonl_path,
+                exc,
+            )
     # Ensure placeholder file exists so downstream notebooks detect file early
     if not jsonl_path.exists():
         try:
@@ -232,10 +242,18 @@ def main(argv: List[str] | None = None) -> None:
         return vals
 
     # Pre-load dev sets for all domains once (split-aware)
-    dev_sets = {
-        d: get_dataset(d, max_samples=args.dev_size, split=args.eval_split)
-        for d in args.domains
-    }
+    try:
+        dev_sets = {
+            d: get_dataset(d, max_samples=args.dev_size, split=args.eval_split)
+            for d in args.domains
+        }
+    except RuntimeError as err:
+        log.error(
+            "Failed to load datasets for domains %s (%s). Aborting value-add run.",
+            args.domains,
+            err,
+        )
+        raise SystemExit(1) from err
 
     # Helper for incremental append (atomic-ish)
     def append_record(rec: Dict[str, Any]):

@@ -40,7 +40,7 @@ allowed_ranks: [4, 8, 16]
 # Meaning: Restricts LoRA target modules (suffix-based); "attention" maps to ATTENTION_SUFFIXES.
 # Options: attention | all | explicit list of suffixes.
 # Rationale: "attention" is a safe, repo-aligned baseline.
-allowed_targets: attention
+allowed_targets: all
 
 # graph: Overlay parameters for Swarm v2 diffusion.
 # Meaning: Controls topology/connectivity → spectral gap λ2 → diffusion speed.

@@ -26,8 +26,13 @@ log = logging.getLogger(__name__)
 @contextlib.contextmanager
 def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
     """Temporarily load a LoRA adapter into *model*."""
-    # Cache pristine weights on CPU to reduce device memory pressure
-    pristine_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    # Cache pristine weights on CPU once per model to amortise copy overhead
+    pristine_state = getattr(model, "_plora_pristine_state", None)
+    if pristine_state is None:
+        pristine_state = {
+            k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+        }
+        setattr(model, "_plora_pristine_state", pristine_state)
     had_peft_attr = hasattr(model, "peft_config")
 
     t0 = time.perf_counter()

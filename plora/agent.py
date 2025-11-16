@@ -17,6 +17,7 @@ from typing import Dict, List, Mapping, Set
 
 from plora.manifest import Manifest
 from plora.gate import alignment_gate, Policy
+from plora.targets import ATTENTION_SUFFIXES
 from plora.signer import sign_with_tag, ADAPTER_TAG
 
 __all__ = [
@@ -333,7 +334,13 @@ class Agent:
 # ------------------------------------------------------------------
 # Utilities
 # ------------------------------------------------------------------
-def make_dummy_adapter(domain: str, out_dir: Path) -> AdapterInfo:
+def make_dummy_adapter(
+    domain: str,
+    out_dir: Path,
+    *,
+    rank: int = 4,
+    target_modules: list[str] | None = None,
+) -> AdapterInfo:
     """Create a minimal on-disk dummy adapter for a domain and return AdapterInfo.
 
     Writes adapter_model.safetensors, adapter_config.json and plora.yml into
@@ -342,9 +349,17 @@ def make_dummy_adapter(domain: str, out_dir: Path) -> AdapterInfo:
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     model_path = out_dir / "adapter_model.safetensors"
-    payload = f"dummy-{domain}".encode()
+    payload = f"dummy-{domain}-r{rank}".encode()
     model_path.write_bytes(payload)
-    (out_dir / "adapter_config.json").write_text("{}")
+    modules = target_modules or list(ATTENTION_SUFFIXES)
+    adapter_config = {
+        "base_model_name_or_path": "dummy/base",
+        "bias": "none",
+        "lora_alpha": max(1, rank * 2),
+        "r": rank,
+        "target_modules": modules,
+    }
+    (out_dir / "adapter_config.json").write_text(json.dumps(adapter_config, indent=2))
     sha_hex = sha256(payload).hexdigest()
     man = Manifest(
         schema_version=0,
@@ -352,7 +367,12 @@ def make_dummy_adapter(domain: str, out_dir: Path) -> AdapterInfo:
         domain=domain,
         base_model="dummy/base",
         peft_format="lora",
-        lora={"r": 1, "alpha": 1, "dropout": 0.0, "target_modules": []},
+        lora={
+            "r": rank,
+            "alpha": max(1, rank * 2),
+            "dropout": 0.0,
+            "target_modules": modules,
+        },
         artifacts={
             "filename": model_path.name,
             "sha256": sha_hex,

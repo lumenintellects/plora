@@ -1,1 +1,143 @@
-[{"0": ["a"], "1": ["b"], "2": ["c"]}, {"0": ["a", "b"], "1": ["b"], "2": ["c"]}, {"0": ["a", "b", "c"], "1": ["a", "b", "c"], "2": ["a", "b", "c"]}]
+[
+  {
+    "0": [
+      "arithmetic",
+      "legal"
+    ],
+    "1": [
+      "legal"
+    ],
+    "2": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "4": [
+      "arithmetic",
+      "legal"
+    ],
+    "5": [
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal"
+    ],
+    "1": [
+      "arithmetic",
+      "legal"
+    ],
+    "2": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "4": [
+      "arithmetic",
+      "legal"
+    ],
+    "5": [
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal"
+    ],
+    "1": [
+      "arithmetic",
+      "legal"
+    ],
+    "2": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "4": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "5": [
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "1": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "2": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "4": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "5": [
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "1": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "2": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "4": [
+      "arithmetic",
+      "legal",
+      "medical"
+    ],
+    "5": [
+      "medical"
+    ]
+  }
+]

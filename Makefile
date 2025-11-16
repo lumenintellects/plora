@@ -141,6 +141,10 @@ swarm-v2-smoke:
 swarm-v2-eval:
 	poetry run python -m scripts.evaluate_v2 --reports results --out results/summary_v2.json
 
+.PHONY: prepare-data
+prepare-data:
+	poetry run python -m scripts.preload_datasets
+
 .PHONY: figures
 figures:
 	poetry run python -m scripts.plot_figures --summary results/summary_v2.json --out results/figures
@@ -180,7 +184,7 @@ math-export:
 
 .PHONY: thesis-sweep
 thesis-sweep:
-	poetry run python -m scripts.thesis_sweep --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42 --p 0.25 --rounds 10 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42 --p 0.25 --rounds 10 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
@@ -205,44 +209,46 @@ config-use-dry:
 
 .PHONY: dry-run-lite
 dry-run-lite: config-use-dry
-	@echo "[1/19] Running unit tests" && \
+	@echo "[1/20] Running unit tests" && \
 	poetry run pytest -q && \
-	echo "[2/19] Calibrating spectral constant C (ER)" && \
+	echo "[2/20] Preloading datasets" && \
+	$(MAKE) prepare-data && \
+	echo "[3/20] Calibrating spectral constant C (ER)" && \
 	$(MAKE) calibrate-c && \
-	echo "[3/19] Validating spectral/Cheeger bounds" && \
+	echo "[4/20] Validating spectral/Cheeger bounds" && \
 	$(MAKE) validate-bounds && \
-	echo "[4/19] Calibrating probes" && \
+	echo "[5/20] Calibrating probes" && \
 	$(MAKE) probes-calib && \
-	echo "[5/19] Training per-domain adapters" && \
+	echo "[6/20] Training per-domain adapters" && \
 	$(MAKE) train-all && \
-	echo "[6/19] Signing adapters" && \
+	echo "[7/20] Signing adapters" && \
 	$(MAKE) sign-all && \
-	echo "[7/19] Swarm v2 simulation (security on)" && \
+	echo "[8/20] Swarm v2 simulation (security on)" && \
 	$(MAKE) swarm-v2-smoke && \
-	echo "[8/19] Summarising v2 reports" && \
+	echo "[9/20] Summarising v2 reports" && \
 	$(MAKE) swarm-v2-eval && \
-	echo "[9/19] Training monolithic baseline (rank 4)" && \
+	echo "[10/20] Training monolithic baseline (rank 4)" && \
 	$(MAKE) monolithic-r4 && \
-	echo "[10/19] Value-add rank sweep (small)" && \
+	echo "[11/20] Value-add rank sweep (small)" && \
 	$(MAKE) value-add-rank-sweep && \
-	echo "[11/19] Thesis-scale sweep (compact)" && \
+	echo "[12/20] Thesis-scale sweep (compact)" && \
 	$(MAKE) thesis-sweep && \
-	echo "[12/19] Generating figures" && \
+	echo "[13/20] Generating figures" && \
 	$(MAKE) figures && \
-	echo "[13/19] Ablations (rank/scheme)" && \
+	echo "[14/20] Ablations (rank/scheme)" && \
 	$(MAKE) ablation && \
-	echo "[14/19] Alternating train-merge stability" && \
+	echo "[15/20] Alternating train-merge stability" && \
 	$(MAKE) alt-train-merge && \
-	echo "[15/19] Value-add JSONL build (low mem)" && \
+	echo "[16/20] Value-add JSONL build (low mem)" && \
 	$(MAKE) value-add-build-lowmem && \
-	echo "[16/19] Consensus-enabled v2 smoke" && \
+	echo "[17/20] Consensus-enabled v2 smoke" && \
 	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
-	echo "[17/19] gRPC offer/fetch demo" && \
+	echo "[18/20] gRPC offer/fetch demo" && \
 	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
-	echo "[18/19] Dump effective security policy" && \
+	echo "[19/20] Dump effective security policy" && \
 	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
 	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
-	echo "[19/19] Net IT metrics" && \
+	echo "[20/20] Net IT metrics" && \
 	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
 	$(MAKE) net-it && \
 	echo "Dry-run lite (expanded) complete. See results/ and out/."
@@ -257,44 +263,46 @@ dry-run-lite: config-use-dry
 # ---------------------------------------------------------------------------
 .PHONY: full-experiment
 full-experiment: config-use-full
-	@echo "[1/19] Running unit tests" && \
+	@echo "[1/20] Running unit tests" && \
 	poetry run pytest -q && \
-	echo "[2/19] Calibrating spectral constant C (ER)" && \
+	echo "[2/20] Preloading datasets" && \
+	$(MAKE) prepare-data && \
+	echo "[3/20] Calibrating spectral constant C (ER)" && \
 	$(MAKE) calibrate-c && \
-	echo "[3/19] Validating spectral/Cheeger bounds" && \
+	echo "[4/20] Validating spectral/Cheeger bounds" && \
 	$(MAKE) validate-bounds && \
-	echo "[4/19] Calibrating probes" && \
+	echo "[5/20] Calibrating probes" && \
 	$(MAKE) probes-calib && \
-	echo "[5/19] Training per-domain adapters" && \
+	echo "[6/20] Training per-domain adapters" && \
 	$(MAKE) train-all && \
-	echo "[6/19] Signing adapters" && \
+	echo "[7/20] Signing adapters" && \
 	$(MAKE) sign-all && \
-	echo "[7/19] Swarm v2 simulation (security on)" && \
+	echo "[8/20] Swarm v2 simulation (security on)" && \
 	$(MAKE) swarm-v2-smoke && \
-	echo "[8/19] Summarising v2 reports" && \
+	echo "[9/20] Summarising v2 reports" && \
 	$(MAKE) swarm-v2-eval && \
-	echo "[9/19] Training monolithic baseline (rank 4)" && \
+	echo "[10/20] Training monolithic baseline (rank 4)" && \
 	$(MAKE) monolithic-r4 && \
-	echo "[10/19] Value-add rank sweep (small)" && \
+	echo "[11/20] Value-add rank sweep (small)" && \
 	$(MAKE) value-add-rank-sweep && \
-	echo "[11/19] Thesis-scale sweep (compact)" && \
+	echo "[12/20] Thesis-scale sweep (compact)" && \
 	$(MAKE) thesis-sweep && \
-	echo "[12/19] Generating figures" && \
+	echo "[13/20] Generating figures" && \
 	$(MAKE) figures && \
-	echo "[13/19] Ablations (rank/scheme)" && \
+	echo "[14/20] Ablations (rank/scheme)" && \
 	$(MAKE) ablation && \
-	echo "[14/19] Alternating train-merge stability" && \
+	echo "[15/20] Alternating train-merge stability" && \
 	$(MAKE) alt-train-merge && \
-	echo "[15/19] Value-add JSONL build (low mem)" && \
+	echo "[16/20] Value-add JSONL build (low mem)" && \
 	$(MAKE) value-add-build-lowmem && \
-	echo "[16/19] Consensus-enabled v2 smoke" && \
+	echo "[17/20] Consensus-enabled v2 smoke" && \
 	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
-	echo "[17/19] gRPC offer/fetch demo (server in background)" && \
+	echo "[18/20] gRPC offer/fetch demo (server in background)" && \
 	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
-	echo "[18/19] Dump effective security policy" && \
+	echo "[19/20] Dump effective security policy" && \
 	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
 	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
-	echo "[19/19] Net IT metrics" && \
+	echo "[20/20] Net IT metrics" && \
 	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
 	$(MAKE) net-it && \
 	echo "Full experiment complete. See results/ and out/."

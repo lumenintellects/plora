@@ -5,12 +5,15 @@ from __future__ import annotations
 
 from typing import List, Tuple, Optional
 import os
+import time
 
 import logging
 from datasets import load_dataset
 
 SEED = 42
 logger = logging.getLogger(__name__)
+_RETRIES_DEFAULT = int(os.getenv("PLORA_DATASET_RETRIES", "3") or "3")
+_BACKOFF_DEFAULT = float(os.getenv("PLORA_DATASET_RETRY_BACKOFF", "5") or "5")
 
 # ---------------------------------------------------------------------------
 # RealDatasetLoader
@@ -30,7 +33,13 @@ class RealDatasetLoader:
 
     @classmethod
     def _hf_slice(
-        cls, name: str, subset: Optional[str] = None, *, split: str = "train"
+        cls,
+        name: str,
+        subset: Optional[str] = None,
+        *,
+        split: str = "train",
+        retries: int | None = None,
+        backoff: float | None = None,
     ):
         """Download split with streaming, deterministic shuffle, and hard-cap to SAMPLE_LIMIT.
 
@@ -43,27 +52,42 @@ class RealDatasetLoader:
         split : str
             Which split to load (e.g., "train", "validation", "test"). Defaults to "train".
         """
-        try:
-            # Use streaming for large datasets to avoid loading everything into RAM
-            ds = load_dataset(name, subset, split=split, streaming=True)
-            ds = ds.shuffle(
-                buffer_size=10_000, seed=SEED
-            )  # Use buffer for streaming shuffle
+        max_attempts = max(1, retries if retries is not None else _RETRIES_DEFAULT)
+        backoff_sec = backoff if backoff is not None else _BACKOFF_DEFAULT
+        last_exc: Exception | None = None
 
-            # Convert to list with sample limit
-            data = []
-            for i, example in enumerate(ds):
-                if cls.SAMPLE_LIMIT is not None and i >= cls.SAMPLE_LIMIT:
-                    break
-                data.append(example)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                ds = load_dataset(
+                    name,
+                    subset,
+                    split=split,
+                    streaming=False,
+                    download_mode="reuse_cache_if_exists",
+                )
+                ds = ds.shuffle(seed=SEED)
+                if cls.SAMPLE_LIMIT is not None:
+                    limit = min(len(ds), int(cls.SAMPLE_LIMIT))
+                    ds = ds.select(range(limit))
+                return ds
+            except Exception as e:
+                last_exc = e
+                logger.warning(
+                    "Failed to load HF dataset %s split=%s (attempt %d/%d): %s",
+                    name,
+                    split,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+                if attempt < max_attempts:
+                    sleep_for = max(0.0, backoff_sec) * attempt
+                    if sleep_for:
+                        time.sleep(sleep_for)
 
-            # Convert back to dataset for consistency
-            from datasets import Dataset as HFDataset
-
-            return HFDataset.from_list(data) if data else None
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to load HF dataset {name} split={split}: {e}")
+        raise RuntimeError(
+            f"Failed to load HF dataset {name} split={split} after {max_attempts} attempts: {last_exc}"
+        )
 
     @classmethod
     def load_arithmetic_data(cls, *, split: str = "train"):

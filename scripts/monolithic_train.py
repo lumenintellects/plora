@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import random
 import time
 from pathlib import Path
 from typing import List, Tuple
@@ -67,6 +68,8 @@ def main():
     pairs: List[Tuple[str, str]] = []
     for d in ns.domains:
         pairs.extend(get_dataset(d, max_samples=ns.samples))
+    rng = random.Random(42)
+    rng.shuffle(pairs)
 
     split = max(1, int(0.8 * len(pairs)))
     train_pairs, dev_pairs = pairs[:split], pairs[split:]
