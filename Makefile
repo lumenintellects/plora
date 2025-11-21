@@ -135,7 +135,7 @@ swarm-sim:
 
 # Swarm Sim v2 (push–pull, in-process) – security on, short dry-run
 swarm-v2-smoke:
-	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$(poetry run python -m plora.config graph.p) --security on --trojan_rate 0.3
+	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$(poetry run python -m plora.config graph.p) --security on --trojan_rate 0.3 --history-alias results/history.json
 
 # Summarise v2 (and v1 graph) reports into a compact JSON
 swarm-v2-eval:
@@ -209,49 +209,53 @@ config-use-dry:
 
 .PHONY: dry-run-lite
 dry-run-lite: config-use-dry
-	@echo "[1/20] Running unit tests" && \
-	poetry run pytest -q && \
-	echo "[2/20] Preloading datasets" && \
-	$(MAKE) prepare-data && \
-	echo "[3/20] Calibrating spectral constant C (ER)" && \
-	$(MAKE) calibrate-c && \
-	echo "[4/20] Validating spectral/Cheeger bounds" && \
-	$(MAKE) validate-bounds && \
-	echo "[5/20] Calibrating probes" && \
-	$(MAKE) probes-calib && \
-	echo "[6/20] Training per-domain adapters" && \
-	$(MAKE) train-all && \
-	echo "[7/20] Signing adapters" && \
-	$(MAKE) sign-all && \
-	echo "[8/20] Swarm v2 simulation (security on)" && \
-	$(MAKE) swarm-v2-smoke && \
-	echo "[9/20] Summarising v2 reports" && \
-	$(MAKE) swarm-v2-eval && \
-	echo "[10/20] Training monolithic baseline (rank 4)" && \
-	$(MAKE) monolithic-r4 && \
-	echo "[11/20] Value-add rank sweep (small)" && \
-	$(MAKE) value-add-rank-sweep && \
-	echo "[12/20] Thesis-scale sweep (compact)" && \
-	$(MAKE) thesis-sweep && \
-	echo "[13/20] Generating figures" && \
-	$(MAKE) figures && \
-	echo "[14/20] Ablations (rank/scheme)" && \
-	$(MAKE) ablation && \
-	echo "[15/20] Alternating train-merge stability" && \
-	$(MAKE) alt-train-merge && \
-	echo "[16/20] Value-add JSONL build (low mem)" && \
-	$(MAKE) value-add-build-lowmem && \
-	echo "[17/20] Consensus-enabled v2 smoke" && \
-	poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
-	echo "[18/20] gRPC offer/fetch demo" && \
-	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
-	echo "[19/20] Dump effective security policy" && \
-	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
-	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
-	echo "[20/20] Net IT metrics" && \
-	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
-	$(MAKE) net-it && \
-	echo "Dry-run lite (expanded) complete. See results/ and out/."
+	@mkdir -p logs
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	log_file=logs/dry-run-lite-$$ts.log; \
+	{ \
+		echo "[1/20] Running unit tests" && \
+		poetry run pytest -q && \
+		echo "[2/20] Preloading datasets" && \
+		$(MAKE) prepare-data && \
+		echo "[3/20] Calibrating spectral constant C (ER)" && \
+		$(MAKE) calibrate-c && \
+		echo "[4/20] Validating spectral/Cheeger bounds" && \
+		$(MAKE) validate-bounds && \
+		echo "[5/20] Calibrating probes" && \
+		$(MAKE) probes-calib && \
+		echo "[6/20] Training per-domain adapters" && \
+		$(MAKE) train-all && \
+		echo "[7/20] Signing adapters" && \
+		$(MAKE) sign-all && \
+		echo "[8/20] Swarm v2 simulation (security on)" && \
+		$(MAKE) swarm-v2-smoke && \
+		echo "[9/20] Summarising v2 reports" && \
+		$(MAKE) swarm-v2-eval && \
+		echo "[10/20] Training monolithic baseline (rank 4)" && \
+		$(MAKE) monolithic-r4 && \
+		echo "[11/20] Value-add rank sweep (small)" && \
+		$(MAKE) value-add-rank-sweep && \
+		echo "[12/20] Thesis-scale sweep (compact)" && \
+		$(MAKE) thesis-sweep && \
+		echo "[13/20] Generating figures" && \
+		$(MAKE) figures && \
+		echo "[14/20] Ablations (rank/scheme)" && \
+		$(MAKE) ablation && \
+		echo "[15/20] Alternating train-merge stability" && \
+		$(MAKE) alt-train-merge && \
+		echo "[16/20] Value-add JSONL build (low mem)" && \
+		$(MAKE) value-add-build-lowmem && \
+		echo "[17/20] Consensus-enabled v2 smoke" && \
+		poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
+		echo "[18/20] gRPC offer/fetch demo" && \
+		( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
+		echo "[19/20] Dump effective security policy" && \
+		RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+		$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
+		echo "[20/20] Net IT metrics" && \
+		$(MAKE) net-it && \
+		echo "Dry-run lite complete. See results/ and out."; \
+	} 2>&1 | tee $$log_file
 
 # ---------------------------------------------------------------------------
 # Full experiment:
@@ -263,49 +267,53 @@ dry-run-lite: config-use-dry
 # ---------------------------------------------------------------------------
 .PHONY: full-experiment
 full-experiment: config-use-full
-	@echo "[1/20] Running unit tests" && \
-	poetry run pytest -q && \
-	echo "[2/20] Preloading datasets" && \
-	$(MAKE) prepare-data && \
-	echo "[3/20] Calibrating spectral constant C (ER)" && \
-	$(MAKE) calibrate-c && \
-	echo "[4/20] Validating spectral/Cheeger bounds" && \
-	$(MAKE) validate-bounds && \
-	echo "[5/20] Calibrating probes" && \
-	$(MAKE) probes-calib && \
-	echo "[6/20] Training per-domain adapters" && \
-	$(MAKE) train-all && \
-	echo "[7/20] Signing adapters" && \
-	$(MAKE) sign-all && \
-	echo "[8/20] Swarm v2 simulation (security on)" && \
-	$(MAKE) swarm-v2-smoke && \
-	echo "[9/20] Summarising v2 reports" && \
-	$(MAKE) swarm-v2-eval && \
-	echo "[10/20] Training monolithic baseline (rank 4)" && \
-	$(MAKE) monolithic-r4 && \
-	echo "[11/20] Value-add rank sweep (small)" && \
-	$(MAKE) value-add-rank-sweep && \
-	echo "[12/20] Thesis-scale sweep (compact)" && \
-	$(MAKE) thesis-sweep && \
-	echo "[13/20] Generating figures" && \
-	$(MAKE) figures && \
-	echo "[14/20] Ablations (rank/scheme)" && \
-	$(MAKE) ablation && \
-	echo "[15/20] Alternating train-merge stability" && \
-	$(MAKE) alt-train-merge && \
-	echo "[16/20] Value-add JSONL build (low mem)" && \
-	$(MAKE) value-add-build-lowmem && \
-	echo "[17/20] Consensus-enabled v2 smoke" && \
-	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
-	echo "[18/20] gRPC offer/fetch demo (server in background)" && \
-	( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
-	echo "[19/20] Dump effective security policy" && \
-	RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
-	$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
-	echo "[20/20] Net IT metrics" && \
-	python -c "import json, pathlib; hist=[{0:['a'],1:['b'],2:['c']},{0:['a','b'],1:['b'],2:['c']},{0:['a','b','c'],1:['a','b','c'],2:['a','b','c']}]; p=pathlib.Path('results/history.json'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(hist)); print('Wrote',p)" && \
-	$(MAKE) net-it && \
-	echo "Full experiment complete. See results/ and out/."
+	@mkdir -p logs
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	log_file=logs/full-experiment-$$ts.log; \
+	{ \
+		echo "[1/20] Running unit tests" && \
+		poetry run pytest -q && \
+		echo "[2/20] Preloading datasets" && \
+		$(MAKE) prepare-data && \
+		echo "[3/20] Calibrating spectral constant C (ER)" && \
+		$(MAKE) calibrate-c && \
+		echo "[4/20] Validating spectral/Cheeger bounds" && \
+		$(MAKE) validate-bounds && \
+		echo "[5/20] Calibrating probes" && \
+		$(MAKE) probes-calib && \
+		echo "[6/20] Training per-domain adapters" && \
+		$(MAKE) train-all && \
+		echo "[7/20] Signing adapters" && \
+		$(MAKE) sign-all && \
+		echo "[8/20] Swarm v2 simulation (security on)" && \
+		$(MAKE) swarm-v2-smoke && \
+		echo "[9/20] Summarising v2 reports" && \
+		$(MAKE) swarm-v2-eval && \
+		echo "[10/20] Training monolithic baseline (rank 4)" && \
+		$(MAKE) monolithic-r4 && \
+		echo "[11/20] Value-add rank sweep (small)" && \
+		$(MAKE) value-add-rank-sweep && \
+		echo "[12/20] Thesis-scale sweep (compact)" && \
+		$(MAKE) thesis-sweep && \
+		echo "[13/20] Generating figures" && \
+		$(MAKE) figures && \
+		echo "[14/20] Ablations (rank/scheme)" && \
+		$(MAKE) ablation && \
+		echo "[15/20] Alternating train-merge stability" && \
+		$(MAKE) alt-train-merge && \
+		echo "[16/20] Value-add JSONL build (low mem)" && \
+		$(MAKE) value-add-build-lowmem && \
+		echo "[17/20] Consensus-enabled v2 smoke" && \
+		poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 11 --security on --trojan_rate 0.3 --consensus on --quorum 2 --report_dir results && \
+		echo "[18/20] gRPC offer/fetch demo (server in background)" && \
+		( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true ) && \
+		echo "[19/20] Dump effective security policy" && \
+		RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+		$(MAKE) dump-policy RANKS="$$RANKS_STR" && \
+		echo "[20/20] Net IT metrics" && \
+		$(MAKE) net-it && \
+		echo "Full experiment complete. See results/ and out."; \
+	} 2>&1 | tee $$log_file
 
 # Artefacts check – verify presence of key outputs for analysis
 .PHONY: artefacts-check

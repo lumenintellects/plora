@@ -133,6 +133,7 @@ def train(
             optim.zero_grad()
             loss = model(**batch).loss
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optim.step()
         log.info("Epoch %d loss %.4f", epoch + 1, float(loss))
 
@@ -222,12 +223,17 @@ def main():
     )
     parser.add_argument("--rank", type=int, default=4, help="LoRA rank r")
     parser.add_argument("--scheme", choices=["attention", "mlp", "all"], default="all")
+    parser.add_argument(
+        "--base-model",
+        type=str,
+        help="Override the base model used for training (defaults to config/env).",
+    )
     parser.add_argument("--private-key", type=Path)
     args = parser.parse_args()
 
     setup_logging("INFO")
 
-    base_model = cfg(
+    base_model = args.base_model or cfg(
         "base_model", os.getenv("PLORA_BASE_MODEL", "google/gemma-3-1b-it")
     )
 

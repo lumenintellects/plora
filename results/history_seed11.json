@@ -1,0 +1,73 @@
+[
+  {
+    "0": [
+      "arithmetic"
+    ],
+    "1": [
+      "legal"
+    ],
+    "2": [
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal"
+    ],
+    "4": [
+      "legal"
+    ],
+    "5": [
+      "legal",
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal"
+    ],
+    "1": [
+      "legal"
+    ],
+    "2": [
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal"
+    ],
+    "4": [
+      "legal"
+    ],
+    "5": [
+      "legal",
+      "medical"
+    ]
+  },
+  {
+    "0": [
+      "arithmetic",
+      "legal"
+    ],
+    "1": [
+      "legal"
+    ],
+    "2": [
+      "legal",
+      "medical"
+    ],
+    "3": [
+      "arithmetic",
+      "legal"
+    ],
+    "4": [
+      "legal"
+    ],
+    "5": [
+      "legal",
+      "medical"
+    ]
+  }
+]

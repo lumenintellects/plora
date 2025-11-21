@@ -208,6 +208,10 @@ results/value_add/nll_cache.json
 !results/value_add/value_add.md
 !results/value_add/dry_run_value_add.md
 !results/value_add/dry_run_value_add.jsonl
+results/abl*
+results/abl_arithmetic_r2_all/
+results/alt*
+results/figures
 docs/
 plora.override.yml
 .calib_tmp

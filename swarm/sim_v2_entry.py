@@ -75,6 +75,12 @@ def _parse_args() -> argparse.Namespace:
         default=Path("results"),
         help="Directory to write a v2 JSON report",
     )
+    p.add_argument(
+        "--history-alias",
+        type=Path,
+        default=None,
+        help="Optional path to copy the serialized per-round history JSON.",
+    )
     p.add_argument("--security", choices=["on", "off"], default="off")
     p.add_argument(
         "--consensus",
@@ -447,6 +453,23 @@ async def _main_async(ns: argparse.Namespace) -> None:
         out = ns.report_dir / f"swarm_v2_report_seed{ns.seed}.json"
         out.write_text(json.dumps(report, indent=2))
         print(f"Saved v2 report to {out}")
+        # Persist per-round knowledge history for downstream metrics
+        hist_payload = [
+            {
+                str(agent_id): sorted(list(knowledge))
+                for agent_id, knowledge in agent_state.items()
+            }
+            for agent_state in history
+        ]
+        hist_text = json.dumps(hist_payload, indent=2)
+        hist_out = ns.report_dir / f"history_seed{ns.seed}.json"
+        hist_out.write_text(hist_text)
+        print(f"Saved history to {hist_out}")
+        if getattr(ns, "history_alias", None):
+            alias_path = ns.history_alias
+            alias_path.parent.mkdir(parents=True, exist_ok=True)
+            alias_path.write_text(hist_text)
+            print(f"Aliased history to {alias_path}")
     except Exception:
         pass
 

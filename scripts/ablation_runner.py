@@ -8,10 +8,12 @@ writes a compact JSONL of results for easy plotting.
 
 import argparse
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import List
+
 from plora.config import get as cfg
-import subprocess
 
 
 def main(argv: List[str] | None = None) -> None:
@@ -33,13 +35,15 @@ def main(argv: List[str] | None = None) -> None:
 
     ns.out.parent.mkdir(parents=True, exist_ok=True)
     out_jsonl = ns.out
+    if out_jsonl.exists():
+        out_jsonl.unlink()
 
     for dom in ns.domains:
         for r in ns.ranks:
             for scheme in ns.schemes:
                 out_dir = Path("results") / f"abl_{dom}_r{r}_{scheme}"
                 cmd = [
-                    "python",
+                    sys.executable,
                     "-m",
                     "scripts.train_task",
                     "--domain",
