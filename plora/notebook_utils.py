@@ -201,6 +201,10 @@ def extract_swarm_metrics(experiment_data: Dict[str, Any]) -> pd.DataFrame:
             'gate_rejected_safety_total': exp.get('gate', {}).get('rejected_safety_total', 0),
             'gate_accepted_clean_total': exp.get('gate', {}).get('accepted_clean_total', 0),
             'gate_accepted_trojan_total': exp.get('gate', {}).get('accepted_trojan_total', 0),
+            'gate_rejected_clean_total': exp.get('gate', {}).get('rejected_clean_total', 0),
+            'gate_rejected_trojan_total': exp.get('gate', {}).get('rejected_trojan_total', 0),
+            'gate_false_negatives': exp.get('gate', {}).get('false_negatives', 0),
+            'gate_false_positives': exp.get('gate', {}).get('false_positives', 0),
         }
         records.append(record)
 

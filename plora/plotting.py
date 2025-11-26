@@ -185,8 +185,14 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
         # Extract per-config delta means & bootstrap CI for each condition
         condition_stats = {}
         for condition in conditions:
-            deltas = [exp.get(condition, {}).get('delta_mean')
-                      for exp in domain_data if exp.get(condition, {}).get('delta_mean') is not None]
+            # Handle None values explicitly (placebo_a/b can be null in JSON)
+            deltas = []
+            for exp in domain_data:
+                cond_data = exp.get(condition)
+                if cond_data is not None and isinstance(cond_data, dict):
+                    delta = cond_data.get('delta_mean')
+                    if delta is not None:
+                        deltas.append(delta)
             if deltas:
                 mean_val = float(np.mean(deltas))
                 try:

@@ -111,3 +111,20 @@ swarm:
 #   tau_trigger: 0.2
 #   tau_clean_delta: -0.05
 #   tau_tensor_z: 5.0
+
+# Alternating train-merge study parameters
+# Meaning: Controls iterative adapter training and merging for convergence analysis.
+# Rationale: 6 cycles produces 5 delta values - rich convergence trend.
+alt_train_merge:
+  # cycles: Number of train-merge iterations.
+  # Options: 3-6; more cycles → better convergence visualization.
+  # Rationale: 6 cycles gives 5 deltas for clear trend analysis.
+  cycles: 6
+  # samples: Training samples per domain per cycle.
+  # Options: 32-128; smaller → faster but noisier.
+  # Rationale: 64 balances speed and stability.
+  samples: 64
+  # rank: LoRA rank for adapters.
+  # Options: 2-16; should match main experiment rank.
+  # Rationale: 4 matches primary experiment configuration.
+  rank: 4

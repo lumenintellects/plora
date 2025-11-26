@@ -203,6 +203,7 @@ fetched/
 _generated/
 results/value_add/rank*
 results/value_add/nll_cache.json
+results/*.md
 !results/value_add/
 !results/value_add/value_add.jsonl
 !results/value_add/value_add.md

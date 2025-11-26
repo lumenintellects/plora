@@ -1,15 +1,5 @@
 #!/usr/bin/env python
-"""Build value_add.jsonl from scratch by evaluating artifacts (memory-safe).
-
-Optimisations to avoid high RAM/VRAM usage:
-- Reuse a single baseline model + tokenizer per base model group (no reload per config).
-- Avoid inject(), which clones the entire state dict; instead, load a temporary
-  base model and wrap with PeftModel for each adapter (trained/placebos), then
-  delete and empty cache immediately after use.
-- Cap tokenization length with --max-length to bound per-example memory/time.
-- Cache baseline per-domain NLLs for each base model to avoid recomputation, with optional on-disk cache.
-- Optional skips: --skip-placebos, --skip-cross for faster, lower-resource runs.
-- Write JSONL incrementally after each record so progress is never lost.
+"""Build value_add.jsonl from scratch by evaluating artifacts
 """
 
 from __future__ import annotations
@@ -320,8 +310,15 @@ def eval_one_config(
     placebo_a = None
     placebo_b = None
     if not skip_placebos:
+        # Try subdirectory first (new convention), then sibling (old convention)
         placebo_a_dir = cfg.dir / "placebo_random"
+        if not placebo_a_dir.exists():
+            # Fall back to sibling directory pattern: {adapter_name}_placebo_random
+            placebo_a_dir = cfg.dir.parent / f"{cfg.dir.name}_placebo_random"
         placebo_b_dir = cfg.dir / "placebo_shuffle"
+        if not placebo_b_dir.exists():
+            # Fall back to sibling directory pattern: {adapter_name}_placebo_shuffle
+            placebo_b_dir = cfg.dir.parent / f"{cfg.dir.name}_placebo_shuffle"
         if placebo_a_dir.exists():
             pa_cache_path = (
                 _adapter_cache_path(

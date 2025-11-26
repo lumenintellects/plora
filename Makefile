@@ -7,7 +7,12 @@ DOMAINS := $(shell poetry run python -c 'from plora.config import get; print(" "
 
 .PHONY: alt-train-merge
 alt-train-merge:
-	poetry run python -m scripts.alternating_train_merge --domains $(DOMAINS_CSV) --cycles 2 --samples 32 --rank 4 --out results/alt_train_merge
+	poetry run python -m scripts.alternating_train_merge \
+		--domains $(DOMAINS_CSV) \
+		--cycles $$(poetry run python -m plora.config alt_train_merge.cycles) \
+		--samples $$(poetry run python -m plora.config alt_train_merge.samples) \
+		--rank $$(poetry run python -m plora.config alt_train_merge.rank) \
+		--out results/alt_train_merge
 
 .PHONY: ablation
 ablation:

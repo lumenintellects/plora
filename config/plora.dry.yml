@@ -112,3 +112,9 @@ swarm:
 #   tau_trigger: 0.2
 #   tau_clean_delta: -0.05
 #   tau_tensor_z: 5.0
+
+# Alternating train-merge study parameters (minimal for dry runs)
+alt_train_merge:
+  cycles: 2      # Minimal cycles for smoke test
+  samples: 16    # Very small for speed
+  rank: 4        # Match primary rank

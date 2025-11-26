@@ -19,6 +19,21 @@ from plora.compat import device_dtype
 from plora.config import get as cfg
 from plora.loader import merge_plasmids
 from scripts.train_task import get_dataset, select_target_modules
+import gc
+
+
+def _clear_memory():
+    """Aggressively clear GPU/MPS memory between cycles."""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        # MPS (Apple Silicon) memory cleanup
+        if hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
+        if hasattr(torch.mps, "synchronize"):
+            torch.mps.synchronize()
 
 
 def _train_once(
@@ -58,6 +73,9 @@ def _train_once(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out_dir, safe_serialization=True)
+    # Free memory after saving
+    del model, optim, encs
+    _clear_memory()
     return out_dir
 
 
@@ -103,6 +121,9 @@ def main(argv: List[str] | None = None) -> None:
                 device_map={"": device},
             )
             prev_model_state = prev.state_dict()
+            # Free the model after extracting state dict
+            del prev
+            _clear_memory()
         for scale in cand_scales:
             m = merge_plasmids(
                 base_model,
@@ -136,6 +157,11 @@ def main(argv: List[str] | None = None) -> None:
         save_dir = ns.out / f"merged_cycle{c}"
         save_dir.mkdir(parents=True, exist_ok=True)
         merged.save_pretrained(save_dir, safe_serialization=True)
+        
+        # Clear memory after merge save
+        if prev_model_state is not None:
+            del prev_model_state
+        _clear_memory()
 
         # Convergence diagnostics: parameter delta norm relative to previous merged
         if c > 0:
@@ -172,6 +198,13 @@ def main(argv: List[str] | None = None) -> None:
                         .item()
                     )
             losses.append(s**0.5)
+            # Clear memory after convergence calculation
+            del prev, sda, sdb
+            _clear_memory()
+        
+        # Delete merged model after each cycle to free memory
+        del merged
+        _clear_memory()
 
     # Write a small diagnostics file
     try:

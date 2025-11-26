@@ -58,6 +58,8 @@ _DEFAULTS: Dict[str, Any] = {
     "swarm": {"trojan_rate": 0.3, "quorum": 2},
     # Gate threshold defaults (can be overridden in YAML)
     "gate": {"tau_trigger": 0.2, "tau_clean_delta": -0.05, "tau_tensor_z": 5.0},
+    # Alternating train-merge defaults
+    "alt_train_merge": {"cycles": 3, "samples": 32, "rank": 4},
 }
 
 
