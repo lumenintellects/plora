@@ -32,6 +32,35 @@ TMP_ROOT = Path(".sweep_tmp")
 DOMAINS = ["arithmetic", "legal", "medical"]
 
 
+def _load_calibrated_c(topology: str, default_c: float = 2.0) -> float:
+    """Load calibrated C value from calibration file.
+    
+    Args:
+        topology: Graph topology (er, ws, ba)
+        default_c: Default C value if calibration file not found
+        
+    Returns:
+        Calibrated C value, or default_c if not available
+    """
+    # Try topology-specific calibration file first
+    calib_path = Path(f"results/c_calib_{topology}.json")
+    if not calib_path.exists():
+        # Fallback to ER calibration (most common)
+        calib_path = Path("results/c_calib_er.json")
+    
+    if calib_path.exists():
+        try:
+            with calib_path.open() as f:
+                calib_data = json.load(f)
+            c_values = [c["C_hat"] for c in calib_data if c.get("C_hat") is not None]
+            if c_values:
+                return float(sum(c_values) / len(c_values))
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+    
+    return default_c
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Swarm v2 parameter sweep")
     parser.add_argument("--topos", type=str, default="er,ws,ba")
@@ -161,11 +190,20 @@ def main(argv: Sequence[str] | None = None) -> None:
     try:
         with args.out.open("w") as outf:
             for topo in topologies:
+                # Load calibrated C for this topology
+                C_calibrated = _load_calibrated_c(topo, default_c=2.0)
                 for n in sizes:
                     for seed in seeds:
                         nbrs = _build_graph(topo, n, args.p, args.ws_k, args.ba_m, seed)
-                        lam2 = spectral_gap(nbrs)
-                        t_pred = predicted_rounds_spectral(n, lam2)
+                        lam2 = spectral_gap(nbrs, normalized=True)
+                        # Multi-source diffusion: each domain starts in ~N/3 agents (p=1/3)
+                        # Use log((1-p)⁻¹ · N) = log(3/2 · N) instead of log(N)
+                        # This accounts for uninformed population remaining
+                        initial_informed_fraction = 1.0 / len(DOMAINS)  # p = 1/3 for 3 domains
+                        t_pred = predicted_rounds_spectral(
+                            n, lam2, normalized=True, C=C_calibrated,
+                            initial_informed_fraction=initial_informed_fraction
+                        )
                         for trojan_rate in trojan_rates:
                             for tau_trig in tau_trigger_grid:
                                 for tau_nz in tau_norm_z_grid:
@@ -214,7 +252,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                                         t_obs = None
                                         for entry in round_logs:
                                             coverage = entry.get("coverage") or {}
-                                            if coverage and all(val == 1.0 for val in coverage.values()):
+                                            # Use 90% coverage threshold as per specification (≥90% coverage)
+                                            if coverage and all(val >= 0.9 for val in coverage.values()):
                                                 t_obs = entry["t"]
                                                 break
 

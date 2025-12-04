@@ -412,7 +412,13 @@ def alignment_gate(
             pass
 
     # Weight-space proxy via file size z-score around a small reference
-    nz = weight_norm_zscore(adapter_dir, manifest, ref_mean=8.0, ref_std=4.0)
+    REF_MEAN_MB = 8.0   # Expected adapter size ~8 MB
+    REF_STD_MB = 4.0    # Standard deviation ~4 MB
+    nz = weight_norm_zscore(
+        adapter_dir, manifest,
+        ref_mean=REF_MEAN_MB * 1024 * 1024,
+        ref_std=REF_STD_MB * 1024 * 1024
+    )
     try:
         zmax, _ = tensor_norm_anomaly_z(adapter_dir)
         if zmax > policy.tau_tensor_z:

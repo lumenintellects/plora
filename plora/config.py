@@ -89,12 +89,31 @@ def load() -> Dict[str, Any]:
 
 
 def get(path: str, default: Any | None = None) -> Any:
+    """Get a config value by dot-path, with optional array indexing.
+    
+    Examples:
+        get("value_add.ranks")      -> [1, 4, 8]
+        get("value_add.ranks[0]")   -> 1
+        get("domains[1]")           -> "legal"
+    """
+    import re
     parts = path.split(".")
     cur: Any = load()
     for p in parts:
-        if not isinstance(cur, dict) or p not in cur:
-            return default
-        cur = cur[p]
+        # Check for array indexing like "ranks[0]"
+        match = re.match(r"^(\w+)\[(\d+)\]$", p)
+        if match:
+            key, idx = match.group(1), int(match.group(2))
+            if not isinstance(cur, dict) or key not in cur:
+                return default
+            cur = cur[key]
+            if not isinstance(cur, list) or idx >= len(cur):
+                return default
+            cur = cur[idx]
+        else:
+            if not isinstance(cur, dict) or p not in cur:
+                return default
+            cur = cur[p]
     return cur
 
 

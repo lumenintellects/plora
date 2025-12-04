@@ -79,8 +79,8 @@ value_add:
   ranks: [1]
   # schemes: Target-module schemes.
   # Options: attention | mlp | all.
-  # Rationale: "all" evaluates broader targeting.
-  schemes: [all]
+  # Rationale: "attention" is fastest for dry runs (fewest parameters).
+  schemes: [attention]
   # seeds: RNG seeds for repeatability; more seeds → more robust stats.
   # Options: list of integers; e.g., [41,42,43].
   # Rationale: Single seed suffices for smoke runs.
@@ -117,4 +117,4 @@ swarm:
 alt_train_merge:
   cycles: 2      # Minimal cycles for smoke test
   samples: 16    # Very small for speed
-  rank: 4        # Match primary rank
+  rank: 1        # Must match allowed_ranks for security gate to pass

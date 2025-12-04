@@ -23,6 +23,7 @@ __all__ = [
     "mutual_information",
     "rounds_to_diffuse",
     "spectral_gap",
+    "spectral_gap_normalized",
     "mi_series",
     "mi_deltas",
     "cooccurrence_excess",
@@ -168,11 +169,81 @@ def rounds_to_diffuse(
     return result
 
 
-def spectral_gap(neighbours: Sequence[Sequence[int]]) -> float:
-    """Return algebraic connectivity (λ2) of the graph Laplacian.
-
-    neighbours: adjacency list (undirected). For disconnected graphs, returns 0.0.
+def spectral_gap_normalized(neighbours: Sequence[Sequence[int]]) -> float:
+    """Return algebraic connectivity (λ2) of the normalized Laplacian.
+    
+    The normalized Laplacian is L_norm = D^(-1/2) L D^(-1/2) where:
+    - L = D - A (unnormalized Laplacian)
+    - D = degree matrix
+    - A = adjacency matrix
+    
+    Normalized eigenvalues are in [0, 2], making them suitable for mixing time bounds.
+    
+    Args:
+        neighbours: Adjacency list (undirected). For disconnected graphs, returns 0.0.
+        
+    Returns:
+        λ₂ (second smallest eigenvalue) of normalized Laplacian, in range [0, 2].
     """
+    n = len(neighbours)
+    if n == 0:
+        return 0.0
+    
+    # Build adjacency matrix
+    A = torch.zeros((n, n), dtype=torch.float64)
+    for i, nbrs in enumerate(neighbours):
+        for j in nbrs:
+            if 0 <= j < n and j != i:
+                A[i, j] = 1.0
+                A[j, i] = 1.0
+    
+    # Compute degrees
+    deg = A.sum(dim=1)
+    
+    # Handle isolated nodes (degree 0)
+    deg = torch.clamp(deg, min=1.0)  # Avoid division by zero
+    
+    # Build normalized Laplacian: L_norm = D^(-1/2) (D - A) D^(-1/2)
+    # = I - D^(-1/2) A D^(-1/2)
+    D_inv_sqrt = torch.diag(1.0 / torch.sqrt(deg))
+    L_norm = torch.eye(n, dtype=torch.float64) - D_inv_sqrt @ A @ D_inv_sqrt
+    
+    try:
+        evals = torch.linalg.eigvalsh(L_norm)
+    except RuntimeError:
+        # Fallback to float32 if float64 fails
+        L_norm = L_norm.to(torch.float32)
+        evals = torch.linalg.eigvalsh(L_norm)
+    
+    evals, _ = torch.sort(evals)
+    
+    if evals.numel() < 2:
+        return 0.0
+    
+    lam2 = float(evals[1].item())
+    
+    # Normalized eigenvalues should be in [0, 2]
+    # Clamp to handle numerical errors
+    lam2 = max(0.0, min(2.0, lam2))
+    
+    return lam2
+
+
+def spectral_gap(neighbours: Sequence[Sequence[int]], normalized: bool = False) -> float:
+    """Return algebraic connectivity (λ2) of the graph Laplacian.
+    
+    Args:
+        neighbours: Adjacency list (undirected). For disconnected graphs, returns 0.0.
+        normalized: If True, use normalized Laplacian (for mixing time theory).
+                   If False, use unnormalized Laplacian (default for backward compatibility).
+    
+    Returns:
+        λ₂ (second smallest eigenvalue). For normalized Laplacian, range is [0, 2].
+    """
+    if normalized:
+        return spectral_gap_normalized(neighbours)
+    
+    # Original unnormalized implementation (for backward compatibility)
     n = len(neighbours)
     if n == 0:
         return 0.0

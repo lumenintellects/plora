@@ -12,6 +12,7 @@ For now the implementation is a skeleton to be fleshed out incrementally.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import sys
@@ -201,7 +202,19 @@ def main(argv: List[str] | None = None) -> None:
     )
     from plora.loader import random_lora, inject
     from plora.manifest import Manifest
+    import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    def cleanup_memory():
+        """Free GPU/MPS memory between heavy operations."""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            if hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
+            if hasattr(torch.mps, "synchronize"):
+                torch.mps.synchronize()
     from plora.compat import device_dtype
     from peft import PeftModel
     from plora.peft_safety import assert_pristine_base
@@ -239,6 +252,9 @@ def main(argv: List[str] | None = None) -> None:
         vals = token_nlls(peft_model, tok, dev_sets[domain])
         nll_cache["adapter"][cache_key] = vals
         _save_cache()
+        # Free memory from temporary model
+        del peft_model, base
+        cleanup_memory()
         return vals
 
     # Pre-load dev sets for all domains once (split-aware)
@@ -289,24 +305,47 @@ def main(argv: List[str] | None = None) -> None:
                     # Train adapter on train split
                     rank_root = args.output / f"rank_r{rank}"
                     out_dir = rank_root / f"{domain}_{scheme}_seed{seed}"
-                    if not out_dir.exists():
+                    if out_dir.exists():
                         log.info(
-                            "Training adapter domain=%s rank=%s scheme=%s seed=%s",
-                            domain,
-                            rank,
-                            scheme,
-                            seed,
+                            "Skipping training (adapter exists): domain=%s rank=%s scheme=%s seed=%s → %s",
+                            domain, rank, scheme, seed, out_dir,
                         )
-                        train_mod.train(
-                            domain,
-                            epochs=1,
-                            samples=args.samples,
-                            output_dir=out_dir,
-                            base_model=base_model_name,
-                            shuffle_labels=False,
-                            rank=rank,
-                            scheme=scheme,
-                        )
+                    else:
+                        # Check if we can reuse step 6's pre-trained adapter (rank=4, scheme=all)
+                        pretrained_dir = Path("out") / domain
+                        pretrained_adapter = pretrained_dir / "adapter_model.safetensors"
+                        if rank == 4 and scheme == "all" and pretrained_adapter.exists():
+                            log.info(
+                                "Reusing pre-trained adapter from %s for domain=%s rank=%s scheme=%s seed=%s",
+                                pretrained_dir,
+                                domain,
+                                rank,
+                                scheme,
+                                seed,
+                            )
+                            # Symlink to the pre-trained adapter directory
+                            out_dir.parent.mkdir(parents=True, exist_ok=True)
+                            out_dir.symlink_to(pretrained_dir.resolve())
+                        else:
+                            log.info(
+                                "Training adapter domain=%s rank=%s scheme=%s seed=%s",
+                                domain,
+                                rank,
+                                scheme,
+                                seed,
+                            )
+                            train_mod.train(
+                                domain,
+                                epochs=1,
+                                samples=args.samples,
+                                output_dir=out_dir,
+                                base_model=base_model_name,
+                                shuffle_labels=False,
+                                rank=rank,
+                                scheme=scheme,
+                            )
+                            # Free training memory before evaluation
+                            cleanup_memory()
 
                     def get_baseline_nlls(dom):
                         key = (dom, seed, args.eval_split)
@@ -434,6 +473,12 @@ def main(argv: List[str] | None = None) -> None:
             else:
                 continue  # schemes loop not broken
             break  # ranks loop break
+
+        # Clean up after each domain to prevent memory accumulation
+        del model, tok
+        baseline_cache.clear()
+        cleanup_memory()
+        log.info("Memory cleanup completed for domain=%s", domain)
 
     log.info("Completed value-add loop; total records now %d", len(records))
 

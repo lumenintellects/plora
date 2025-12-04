@@ -79,8 +79,8 @@ value_add:
   ranks: [4, 8, 16]
   # schemes: Target-module schemes.
   # Options: attention | mlp | all.
-  # Rationale: Evaluate both focused (attention) and broad (all) targeting.
-  schemes: [attention, mlp, all]
+  # Rationale: "all" as primary (most thorough); attention/mlp for ablation comparison.
+  schemes: [all, attention, mlp]
   # seeds: RNG seeds for repeatability; more seeds → more robust stats.
   # Options: list of integers; e.g., [41,42,43].
   # Rationale: Three seeds for significance.

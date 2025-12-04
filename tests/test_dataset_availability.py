@@ -39,7 +39,17 @@ def test_all_domains_available(monkeypatch: pytest.MonkeyPatch) -> None:
             {"question": "Q2", "rationale": "A2"},
         ],
         "lex_glue": [
-            {"text": "Legal snippet"}
+            # case_hold structure: context with <HOLDING> placeholder, 5 possible holdings, correct label
+            {
+                "context": "Legal case context with <HOLDING> placeholder for the holding.",
+                "endings": ["holding one", "holding two", "holding three", "holding four", "holding five"],
+                "label": 0,
+            },
+            {
+                "context": "Another legal case context requiring <HOLDING> determination.",
+                "endings": ["first option", "second option", "third option", "fourth option", "fifth option"],
+                "label": 2,
+            },
         ],
         "openlifescienceai/medmcqa": [
             {"question": "Medical question", "exp": "Medical explanation"}

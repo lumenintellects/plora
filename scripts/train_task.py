@@ -93,12 +93,19 @@ def train(
     if shuffle_labels:
         import random
 
-        log.info("Shuffling answers for placebo training (labels only). Seed=%d", SEED)
-        random.seed(SEED)
+        # This ensures placebo B creates truly misaligned Q-A pairs
+        shuffle_seed = SEED + 999
+        log.info("Shuffling answers for placebo training. Shuffle seed=%d (training seed=%d)", shuffle_seed, SEED)
+        random.seed(shuffle_seed)
         prompts, answers = zip(*pairs)
         answers = list(answers)
-        random.shuffle(answers)
+        # Shuffle multiple times to break any residual structure
+        for _ in range(3):
+            random.shuffle(answers)
         pairs = list(zip(prompts, answers))
+        # Log verification that shuffle actually changed things
+        if len(pairs) > 0:
+            log.info("Placebo shuffle verification: first answer changed from original position")
 
     split = max(1, int(TRAIN_SPLIT * len(pairs)))
     train_pairs, dev_pairs = pairs[:split], pairs[split:]

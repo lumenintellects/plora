@@ -293,22 +293,51 @@ def eval_one_config(
             except Exception:
                 pass
 
-    # Latency, measure adapter load time into a fresh base
-    lat_samples: List[float] = []
-    for _ in range(latency_trials):
+    # Latency measurement: measure BOTH cold (full model load) and hot (adapter-only) injection
+    # Cold latency = time to load base model + adapter (one-time startup cost)
+    # Hot latency = time to inject adapter into already-loaded model (production pattern)
+    
+    cold_lat_samples: List[float] = []
+    hot_lat_samples: List[float] = []
+    
+    # Measure cold latency (includes base model loading) - just 1 trial since it's expensive
+    if latency_trials > 0:
         t0 = time.perf_counter()
         tmp = load_peft(base_model_name, cfg.dir, device, dtype)
-        lat_ms = (time.perf_counter() - t0) * 1e3
-        lat_samples.append(lat_ms)
-        del tmp
+        cold_lat_ms = (time.perf_counter() - t0) * 1e3
+        cold_lat_samples.append(cold_lat_ms)
+        
+        # Now use this loaded model to measure hot injection latency
+        # Extract the base model from the PEFT model for hot injection tests
+        base_for_hot = tmp.get_base_model()
+        
+        # Measure hot latency (adapter injection only, model already loaded)
+        for _ in range(max(1, latency_trials)):
+            t0 = time.perf_counter()
+            # PeftModel.from_pretrained on an already-loaded base = hot injection
+            hot_tmp = PeftModel.from_pretrained(base_for_hot, str(cfg.dir), is_trainable=False)
+            hot_lat_ms = (time.perf_counter() - t0) * 1e3
+            hot_lat_samples.append(hot_lat_ms)
+            del hot_tmp
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
+        del tmp, base_for_hot
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
-    inject_median = sorted(lat_samples)[len(lat_samples) // 2] if lat_samples else 0.0
+    
+    cold_median = sorted(cold_lat_samples)[len(cold_lat_samples) // 2] if cold_lat_samples else 0.0
+    hot_median = sorted(hot_lat_samples)[len(hot_lat_samples) // 2] if hot_lat_samples else 0.0
+    
+    # For backward compatibility, inject_median is now the hot latency (what actually matters)
+    inject_median = hot_median
 
     # Placebos
     placebo_a = None
     placebo_b = None
+    placebo_b_cross: Dict[str, dict] = {}
+    placebo_b_dir = None  # Track for cross-domain eval
     if not skip_placebos:
         # Try subdirectory first (new convention), then sibling (old convention)
         placebo_a_dir = cfg.dir / "placebo_random"
@@ -388,6 +417,53 @@ def eval_one_config(
                         pass
             placebo_b = make_stat(baseline_cache_mem[key_med], pb_nlls)
 
+    # Cross-domain Placebo B evaluation (trained on domain X, evaluated on domain Y)
+    if not skip_placebos and not skip_cross and placebo_b_dir is not None and placebo_b_dir.exists():
+        pb_model_for_cross = None
+        for other_dom, other_encs in encs_by_domain.items():
+            if other_dom == cfg.domain:
+                continue
+            key_other = (base_model_name, other_dom)
+            if key_other not in baseline_cache_mem:
+                continue
+            # Cache path for cross-domain placebo B
+            pb_cross_cache_path = (
+                _adapter_cache_path(
+                    cache_dir or Path("."),
+                    base_model_name,
+                    placebo_b_dir,
+                    other_dom,  # evaluated on other domain
+                    dev_size,
+                    max_length,
+                )
+                if use_adapter_cache
+                else None
+            )
+            pb_cross_nlls: List[float] = []
+            if pb_cross_cache_path is not None and pb_cross_cache_path.exists():
+                try:
+                    pb_cross_nlls = json.loads(pb_cross_cache_path.read_text())
+                except Exception:
+                    pb_cross_nlls = []
+            if not pb_cross_nlls:
+                if pb_model_for_cross is None:
+                    pb_model_for_cross = load_peft(base_model_name, placebo_b_dir, device, dtype)
+                pb_cross_nlls = compute_token_nlls_from_encs(
+                    pb_model_for_cross, other_encs, device
+                )
+                if pb_cross_cache_path is not None:
+                    try:
+                        pb_cross_cache_path.write_text(json.dumps(pb_cross_nlls))
+                    except Exception:
+                        pass
+            pb_cross_deltas = [a - b for a, b in zip(pb_cross_nlls, baseline_cache_mem[key_other])]
+            placebo_b_cross[other_dom] = {"delta_mean": sum(pb_cross_deltas) / len(pb_cross_deltas)}
+        if pb_model_for_cross is not None:
+            del pb_model_for_cross
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
     # Cross-domain deltas
     cross: Dict[str, dict] = {}
     if not skip_cross:
@@ -440,6 +516,27 @@ def eval_one_config(
                 torch.cuda.empty_cache()
             gc.collect()
 
+    # Compute effect decomposition
+    trained_stat = make_stat(baseline_cache_mem[key_med], trained_nlls)
+    effect_decomposition = None
+    if placebo_a is not None and placebo_b is not None:
+        total_effect = trained_stat["delta_mean"]  # Trained vs Base
+        domain_adaptation = placebo_b["delta_mean"]  # Placebo B vs Base (domain exposure only)
+        skill_specific = total_effect - domain_adaptation  # Trained vs Placebo B
+        # Calculate placebo_b / trained ratio
+        pb_ratio = (
+            domain_adaptation / total_effect
+            if total_effect != 0
+            else 0.0
+        )
+        effect_decomposition = {
+            "total_effect": total_effect,
+            "domain_adaptation": domain_adaptation,
+            "skill_specific": skill_specific,
+            "domain_adaptation_pct": pb_ratio * 100,
+            "skill_specific_pct": (1 - pb_ratio) * 100 if total_effect != 0 else 0.0,
+        }
+
     rec = {
         "config": {
             "domain": cfg.domain,
@@ -447,11 +544,18 @@ def eval_one_config(
             "scheme": cfg.scheme,
             "seed": cfg.seed,
         },
-        "trained": make_stat(baseline_cache_mem[key_med], trained_nlls),
+        "trained": trained_stat,
         "placebo_a": placebo_a,
         "placebo_b": placebo_b,
+        "placebo_b_cross": placebo_b_cross if placebo_b_cross else None,
+        "effect_decomposition": effect_decomposition,
         "cross_domain": cross,
-        "latency_ms": inject_median,
+        # Latency breakdown:
+        # - latency_ms: hot injection (adapter-only, model pre-loaded) - what matters for production
+        # - cold_latency_ms: full model + adapter load (one-time startup cost)
+        "latency_ms": inject_median,  # hot injection latency (backward compatible)
+        "cold_latency_ms": cold_median,  # full model load + adapter (one-time cost)
+        "hot_latency_ms": hot_median,  # adapter injection only (production pattern)
     }
     return rec
 
@@ -600,8 +704,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             "trained": None,
             "placebo_a": None,
             "placebo_b": None,
+            "placebo_b_cross": None,
+            "effect_decomposition": None,
             "cross_domain": None,
             "latency_ms": None,
+            "cold_latency_ms": None,
+            "hot_latency_ms": None,
         }
 
     # Preload dev sets once and pre-encode (shared across groups)
@@ -698,8 +806,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "trained": None,
                         "placebo_a": None,
                         "placebo_b": None,
+                        "placebo_b_cross": None,
+                        "effect_decomposition": None,
                         "cross_domain": None,
                         "latency_ms": None,
+                        "cold_latency_ms": None,
+                        "hot_latency_ms": None,
                     }
                 by_key[conf.key()] = rec
                 done += 1

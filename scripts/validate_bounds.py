@@ -26,10 +26,10 @@ def main():
     recs = []
     for n in ns.ns:
         g = erdos_renyi_graph(n, ns.p, seed=ns.seed + n)
-        lam2 = spectral_gap(g)
-        t_pred = predicted_rounds_spectral(n, lam2)
+        lam2 = spectral_gap(g, normalized=True)
+        t_pred = predicted_rounds_spectral(n, lam2, normalized=True)
         phi = conductance_estimate(g, trials=64)
-        lo, hi = cheeger_bounds(g)
+        lo, hi = cheeger_bounds(g, normalized=True)
         recs.append(
             {
                 "n": n,

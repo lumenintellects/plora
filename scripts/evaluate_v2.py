@@ -89,7 +89,8 @@ def _summarise(rep: dict) -> dict:
     lam2 = meta.get("lambda2")
     try:
         if lam2 is not None and N is not None:
-            t_pred = predicted_rounds_spectral(int(N), float(lam2))
+            # Assume lambda2 is from normalized Laplacian (after fix)
+            t_pred = predicted_rounds_spectral(int(N), float(lam2), normalized=True)
             t_obs = final.get("observed_t_all")
             if t_obs is not None:
                 theory["t_pred"] = t_pred

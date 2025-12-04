@@ -57,7 +57,7 @@ def main(argv: List[str] | None = None) -> None:
     base_n = min(ns.ns)
     for n in ns.ns:
         nbrs = build_graph(ns.topology, n, ns.p, ns.k, ns.m, seed=ns.seed + n)
-        lam2 = spectral_gap(nbrs)
+        lam2 = spectral_gap(nbrs, normalized=True)
         # Build agents
         agents: List[Agent] = []
         for i in range(n):
@@ -93,21 +93,28 @@ def main(argv: List[str] | None = None) -> None:
             )
         )
 
-        # Determine observed t_all (first round with full coverage across domains)
+        # Determine observed t_all (first round with ≥90% coverage across domains, as per specification)
         t_all = None
         from swarm.metrics import coverage
 
         if history:
             for t, know in enumerate(history):
                 cov = coverage(know)
-                if all(pv == 1.0 for pv in cov.values()):
+                # Use 90% coverage threshold as per specification (≥90% coverage)
+                if all(pv >= 0.9 for pv in cov.values()):
                     t_all = t
                     break
-        # Estimate C
+        # Estimate C using multi-source diffusion formula
+        # For 3-domain setup: p = 1/3, so use log((1-p)⁻¹ · n) = log(3/2 · n)
         import math
-
+        
+        # Multi-source adjustment: each domain starts in ~n/3 agents (p=1/3)
+        initial_informed_fraction = 1.0 / len(_DOMAINS_DEFAULT)  # p = 1/3 for 3 domains
+        uninformed_fraction = 1.0 - initial_informed_fraction  # 1-p = 2/3
+        log_term = math.log(max(2, n) / uninformed_fraction)  # log(n / (1-p)) = log(3/2 · n)
+        
         C_hat = (
-            (t_all * lam2 / math.log(max(2, n)))
+            (t_all * lam2 / log_term)
             if (t_all is not None and lam2 > 0)
             else None
         )

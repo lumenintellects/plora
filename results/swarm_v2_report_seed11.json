@@ -3,24 +3,24 @@
     "topology": "erdos_renyi",
     "N": 6,
     "domains": [
+      "medical",
       "legal",
-      "arithmetic",
-      "medical"
+      "arithmetic"
     ],
     "seed": 11,
     "p": 0.25,
-    "lambda2": 0.3248691294333538
+    "lambda2": 0.23623738417402662
   },
   "rounds": [
     {
       "t": 0,
       "coverage": {
+        "medical": 0.3333333333333333,
         "legal": 0.8333333333333334,
-        "arithmetic": 0.3333333333333333,
-        "medical": 0.3333333333333333
+        "arithmetic": 0.3333333333333333
       },
       "entropy_avg": 0.8288713632524445,
-      "mutual_information": 0.7688538376159999,
+      "mutual_information": 0.768853837616,
       "mi_delta": 0.0,
       "mi_loss": 0.0,
       "mi_cum_abs": 0.0,
@@ -51,15 +51,15 @@
     {
       "t": 1,
       "coverage": {
+        "medical": 0.3333333333333333,
         "legal": 1.0,
-        "arithmetic": 0.3333333333333333,
-        "medical": 0.3333333333333333
+        "arithmetic": 0.3333333333333333
       },
       "entropy_avg": 0.612197222702993,
       "mutual_information": 0.5709505944546684,
-      "mi_delta": -0.19790324316133145,
-      "mi_loss": 0.19790324316133145,
-      "mi_cum_abs": 0.19790324316133145,
+      "mi_delta": -0.19790324316133157,
+      "mi_loss": 0.19790324316133157,
+      "mi_cum_abs": 0.19790324316133157,
       "mi_norm": 0.13692107034471496,
       "accepted": [
         [
@@ -72,24 +72,24 @@
     {
       "t": 2,
       "coverage": {
+        "medical": 0.3333333333333333,
         "legal": 1.0,
-        "arithmetic": 0.3333333333333333,
-        "medical": 0.3333333333333333
+        "arithmetic": 0.3333333333333333
       },
       "entropy_avg": 0.612197222702993,
       "mutual_information": 0.5709505944546684,
       "mi_delta": 0.0,
       "mi_loss": 0.0,
-      "mi_cum_abs": 0.19790324316133145,
+      "mi_cum_abs": 0.19790324316133157,
       "mi_norm": 0.13692107034471496,
       "accepted": []
     }
   ],
   "final": {
     "coverage": {
+      "medical": 0.3333333333333333,
       "legal": 1.0,
-      "arithmetic": 0.3333333333333333,
-      "medical": 0.3333333333333333
+      "arithmetic": 0.3333333333333333
     },
     "bytes_on_wire": 0,
     "accepted_offers": 5,
@@ -109,15 +109,15 @@
     "bytes_per_offer": 0,
     "consensus": {
       "committed": {
-        "0": "f44044ff2ef41ec375ea714f593206c8d8df55dd7573566c5d9e234a66b8d44c"
+        "0": "dcea0ceab58e990f74f33f5d39a3b011200143e09308b62c4a6f9257a6763f10"
       }
     },
     "rounds_to_diffuse": {
+      "medical": null,
       "legal": 1,
-      "arithmetic": null,
-      "medical": null
+      "arithmetic": null
     },
     "observed_t_all": 1,
-    "predicted_t_all": 12
+    "predicted_t_all": 6
   }
 }

@@ -16,7 +16,7 @@ from pathlib import Path
 import json
 import math
 
-from plora.agent import Agent, make_dummy_adapter
+from plora.agent import Agent, make_dummy_adapter, load_real_adapter
 from swarm.swarm_v2 import run_gossip
 from plora.gate import Policy
 from plora.targets import ATTENTION_SUFFIXES
@@ -152,6 +152,13 @@ def _parse_args() -> argparse.Namespace:
         default="off",
         help="Estimate bytes_on_wire by summing adapter artifact sizes for each accepted offer",
     )
+    # Use real trained adapters instead of dummy ones
+    p.add_argument(
+        "--adapters_dir",
+        type=Path,
+        default=None,
+        help="Directory containing real trained adapters (e.g., 'out'). Falls back to dummy if adapter not found.",
+    )
     return p.parse_args()
 
 
@@ -197,8 +204,10 @@ async def _main_async(ns: argparse.Namespace) -> None:
         if ns.policy_file is not None and ns.policy_file.exists():
             policy = Policy.from_file(ns.policy_file)
         else:
+            # Use configured base_model to match trained adapters (fixes base_model_mismatch rejections)
+            configured_base_model = cfg("base_model", "google/gemma-3-1b-it")
             policy = Policy(
-                base_model="dummy/base",
+                base_model=configured_base_model,
                 allowed_ranks=ranks,
                 allowed_targets=targets,
                 signatures_enabled=(ns.signatures == "on"),
@@ -248,13 +257,35 @@ async def _main_async(ns: argparse.Namespace) -> None:
             policy.tau_norm_z = ns.tau_norm_z
         if ns.tau_clean_delta is not None:
             policy.tau_clean_delta = ns.tau_clean_delta
-    # Build minimal agents with dummy manifests; v2 runs in-process and reuses
-    # Agent.accept() for copying semantics even in sim mode.
+    # Build agents with real adapters (if --adapters_dir provided) or dummy manifests.
+    # v2 runs in-process and reuses Agent.accept() for copying semantics even in sim mode.
     tmp_root = Path(tempfile.mkdtemp(prefix="swarm_v2_"))
+    real_adapter_count = 0
+    adapters_dir = getattr(ns, "adapters_dir", None)
     for i in range(ns.agents):
         dom = _DOMAINS_DEFAULT[i % len(_DOMAINS_DEFAULT)]
         agent_root = tmp_root / f"agent_{i}"
-        adapter = _make_dummy_adapter(dom, agent_root)
+
+        # Try to load real adapter if adapters_dir is specified
+        adapter = None
+        if adapters_dir is not None:
+            real_adapter_path = adapters_dir / dom
+            adapter = load_real_adapter(real_adapter_path)
+            if adapter is not None:
+                real_adapter_count += 1
+                # Copy adapter to agent's root for proper isolation
+                import shutil
+                dest_dir = agent_root / dom
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                for f in real_adapter_path.iterdir():
+                    if f.is_file():
+                        shutil.copy2(f, dest_dir / f.name)
+                adapter = load_real_adapter(dest_dir)
+
+        # Fall back to dummy adapter
+        if adapter is None:
+            adapter = _make_dummy_adapter(dom, agent_root)
+
         # Probabilistically mark as trojan for evaluation
         if ns.trojan_rate > 0.0 and rng.random() < ns.trojan_rate:
             mark_trojan(adapter.path.parent)
@@ -266,6 +297,9 @@ async def _main_async(ns: argparse.Namespace) -> None:
             security_policy=policy,
         )
         agents.append(ag)
+
+    if adapters_dir is not None:
+        print(f"[sim_v2] Loaded {real_adapter_count}/{ns.agents} real adapters from {adapters_dir}")
 
     # Wire a shared in-process consensus engine if enabled
     engine = None
@@ -293,7 +327,7 @@ async def _main_async(ns: argparse.Namespace) -> None:
 
     # Prepare per-round metrics capture
     domains = list({ag.domain for ag in agents})
-    lam2 = spectral_gap_fn(nbrs)
+    lam2 = spectral_gap_fn(nbrs, normalized=True)
     round_logs: list[dict] = []
     history: list[dict[int, set[str]]] = []
     prev_I: float | None = None
@@ -444,7 +478,7 @@ async def _main_async(ns: argparse.Namespace) -> None:
             else None
         )
         report["final"]["predicted_t_all"] = predicted_rounds_spectral(
-            len(agents), lam2
+            len(agents), lam2, normalized=True
         )
     except Exception:
         pass

@@ -23,6 +23,8 @@ from plora.signer import sign_with_tag, ADAPTER_TAG
 __all__ = [
     "AdapterInfo",
     "Agent",
+    "load_real_adapter",
+    "make_dummy_adapter",
 ]
 
 
@@ -398,3 +400,21 @@ def make_dummy_adapter(
     )
     man.dump(out_dir / "plora.yml")
     return AdapterInfo(model_path, man, len(payload))
+
+
+def load_real_adapter(adapter_dir: Path) -> AdapterInfo | None:
+    """Load a real trained adapter from disk.
+
+    Looks for adapter_model.safetensors and plora.yml in adapter_dir.
+    Returns AdapterInfo if found, None if missing required files.
+    """
+    adapter_dir = Path(adapter_dir)
+    model_path = adapter_dir / "adapter_model.safetensors"
+    manifest_path = adapter_dir / "plora.yml"
+
+    if not model_path.exists() or not manifest_path.exists():
+        return None
+
+    manifest = Manifest.load(manifest_path)
+    size_bytes = model_path.stat().st_size
+    return AdapterInfo(model_path, manifest, size_bytes)
