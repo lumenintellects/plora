@@ -168,7 +168,7 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
 
     # Group data by domain and condition
     domains = ['arithmetic', 'legal', 'medical']
-    conditions = ['trained', 'placebo_a', 'placebo_b']
+    conditions = ['trained', 'placebo_a']
 
     for i, domain in enumerate(domains):
         ax = axes[i]
@@ -185,7 +185,7 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
         # Extract per-config delta means & bootstrap CI for each condition
         condition_stats = {}
         for condition in conditions:
-            # Handle None values explicitly (placebo_a/b can be null in JSON)
+            # Handle None values explicitly (placebo_a can be null in JSON)
             deltas = []
             for exp in domain_data:
                 cond_data = exp.get(condition)
@@ -209,13 +209,13 @@ def create_value_add_summary_plot(experiment_data: Dict[str, Any], figsize: Tupl
             }
 
         # Create bar plot with error bars (CI)
-        conditions_display = ['Trained', 'Placebo A\n(Random)', 'Placebo B\n(Shuffled)']
+        conditions_display = ['Trained', 'Placebo A\n(Random)']
         values = [condition_stats[c]['mean'] for c in conditions]
         yerr = [
             [condition_stats[c]['mean'] - condition_stats[c]['ci_lo'] for c in conditions],
             [condition_stats[c]['ci_hi'] - condition_stats[c]['mean'] for c in conditions]
         ]
-        colors = [COLORS['primary'], COLORS['neutral'], COLORS['neutral']]
+        colors = [COLORS['primary'], COLORS['neutral']]
 
         bars = ax.bar(conditions_display, values, color=colors, alpha=0.75, yerr=yerr, capsize=4, linewidth=1.0, edgecolor='black')
 
