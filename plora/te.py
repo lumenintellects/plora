@@ -4,13 +4,10 @@ from __future__ import annotations
 
 Implements:
 - Discrete TE via histogram binning and conditional entropies
-- Continuous TE proxy using KSG MI estimator
 """
 
 from typing import Tuple
 import numpy as np
-
-from .it_estimators import mi_knn
 
 
 def _hist_counts(*cols: np.ndarray, bins: int) -> Tuple[np.ndarray, Tuple]:
@@ -91,30 +88,3 @@ def transfer_entropy_discrete(
     )
 
     return float(H_bt_bp - H_bt_bp_ap)
-
-
-def transfer_entropy_continuous(
-    series_a: np.ndarray,
-    series_b: np.ndarray,
-    *,
-    k: int = 1,
-    knn_k: int = 5,
-) -> float:
-    """Continuous TE proxy A→B using KSG MI estimator:
-
-    TE ≈ I([A_past, B_past]; B_t) - I(B_past; B_t)
-    """
-    a = np.asarray(series_a, dtype=float)
-    b = np.asarray(series_b, dtype=float)
-    n = min(a.shape[0], b.shape[0])
-    if n <= k:
-        return 0.0
-    a = a[:n]
-    b = b[:n]
-    bt = b[k:][:, None]
-    b_past = np.stack([b[k - i - 1 : n - i - 1] for i in range(k)], axis=1)
-    a_past = np.stack([a[k - i - 1 : n - i - 1] for i in range(k)], axis=1)
-    X1 = np.concatenate([a_past, b_past], axis=1)
-    I_full = mi_knn(X1, bt, k=knn_k)
-    I_bp = mi_knn(b_past, bt, k=knn_k)
-    return float(max(0.0, I_full - I_bp))

@@ -404,54 +404,6 @@ full-experiment: config-use-full
 		echo "════════════════════════════════════════════════════════"; \
 	} 2>&1 | tee $$log_file
 
-# Artefacts check – verify presence of key outputs for analysis
-.PHONY: artefacts-check
-artefacts-check:
-	@poetry run python - <<'PY'
-	from pathlib import Path
-	from plora.config import get as cfg
-	root = Path('.')
-	domains = cfg('domains', ['arithmetic','legal','medical'])
-	checks = [
-	    ("Swarm v2 summary", Path("results/summary_v2.json")),
-	    ("Figures dir", Path("results/figures")),
-	    ("Value-add JSONL", Path("results/value_add/value_add.jsonl")),
-	    ("Thesis sweep", Path("results/thesis_sweep.jsonl")),
-	    ("Calibration C (ER)", Path("results/c_calib_er.json")),
-	    ("Bounds validation", Path("results/bounds_validation.json")),
-	    ("Net IT metrics", Path("results/net_it_metrics.json")),
-	    ("Monolithic baseline dir", Path("out/monolithic_r4")),
-	]
-	missing = []
-	for name, p in checks:
-	    if not p.exists():
-	        missing.append(f"{name}: {p}")
-	sv2 = list(Path('results').glob('swarm_v2_report_*.json'))
-	if not sv2:
-	    missing.append("Swarm v2 raw report: results/swarm_v2_report_*.json")
-	for d in domains:
-	    adir = Path('out')/d
-	    if not adir.exists():
-	        missing.append(f"Adapter dir missing: {adir}")
-	        continue
-	    if not (adir/"plora.yml").exists():
-	        missing.append(f"Manifest missing: {(adir/'plora.yml')}")
-	    if not (adir/"adapter_model.safetensors").exists():
-	        missing.append(f"Weights missing: {(adir/'adapter_model.safetensors')}")
-	fetched_any = Path('fetched').exists()
-	if missing:
-	    print("[artefacts-check] MISSING artefacts:")
-	    for m in missing:
-	        print(" -", m)
-	    if not fetched_any:
-	        print("[artefacts-check] Note: fetched/ not found (gRPC demo optional)")
-	    raise SystemExit(1)
-	else:
-	    print("[artefacts-check] All key artefacts present.")
-	    if fetched_any:
-	        print("[artefacts-check] gRPC fetched/ present (demo OK)")
-	PY
-
 # ---------------------------------------------------------------------------
 # Dump effective Security Policy
 #

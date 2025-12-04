@@ -317,15 +317,21 @@ def policy_check(
             rep = None
         # external reputation.json map by key id if available
         if rep is None or rep == 0.0:
-            try:
-                rep_map_path = adapter_dir / "reputation.json"
-                if rep_map_path.exists():
-                    data = json.loads(rep_map_path.read_text())
-                    key_id = getattr(manifest.signer, "pubkey_fingerprint", "")
-                    if key_id and key_id in data:
-                        rep = float(data[key_id])
-            except Exception:
-                rep = None
+            key_id = getattr(manifest.signer, "pubkey_fingerprint", "")
+            # Try adapter-local reputation.json first, then global assets/reputation.json
+            rep_paths = [
+                adapter_dir / "reputation.json",
+                Path(__file__).resolve().parents[1] / "assets" / "reputation.json",
+            ]
+            for rep_map_path in rep_paths:
+                try:
+                    if rep_map_path.exists():
+                        data = json.loads(rep_map_path.read_text())
+                        if key_id and key_id in data:
+                            rep = float(data[key_id])
+                            break
+                except Exception:
+                    continue
         if rep is None or rep < float(policy.min_reputation):
             reasons.append("reputation_low")
 
