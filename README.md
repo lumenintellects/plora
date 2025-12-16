@@ -480,18 +480,6 @@ Key test coverage:
 | MPS memory errors | Set `PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0` |
 | Missing artifacts | Run `make artefacts-check` to diagnose |
 
-## References
-
-- **KSG MI Estimator**: Kraskov, Stögbauer & Grassberger, 2004. *Physical Review E* 69(6).
-- **MINE**: Belghazi et al., 2018. *ICML*.
-- **Gossip Protocols**: Demers et al., 1987. *PODC*.
-- **Spectral Graph Theory**: Chung, 1997. *CBMS Regional Conference Series*.
-- **LoRA**: Hu et al., 2021. *arXiv:2106.09685*.
-
-## License
-
-MIT
-
 ## Author
 
 Artem Pitertsev <artem.pitertsev@gmail.com>
