@@ -2,9 +2,6 @@ from __future__ import annotations
 
 """plora.compat - small helpers to smooth over device & dtype decisions.
 
-The prototype is CPU-first but we retain optional support for Apple-Silicon
-(MPS) and CUDA; detection is automatic. The helpers keep **all** downstream
-modules free from direct `torch.cuda` checks.
 """
 
 import os

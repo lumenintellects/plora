@@ -3,19 +3,15 @@
 All communication is newline-delimited JSON (NDJSON).  Each call to
 ``json.dumps(message).encode() + b"\n"`` produces one frame.
 
-The schema follows the spec in the design brief.  We purposely avoid pydantic
-here to keep the dependency surface minimal.  Validation is explicit and
-lightweight.
 """
 
 from __future__ import annotations
 
 import base64
 import json
-import math
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, ClassVar, Mapping, MutableMapping, TypedDict
+from typing import Any, ClassVar, Mapping, TypedDict
 import zlib
 
 __all__ = [

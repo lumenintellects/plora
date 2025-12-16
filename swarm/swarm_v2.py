@@ -2,9 +2,6 @@ from __future__ import annotations
 
 """Push-pull gossip driver for Swarm Sim v2 (edge-driven rounds).
 
-This module operates directly over in-process Agent objects for simplicity.
-It complements the v1 socket-based GossipNode for experiments that focus on
-graph-level diffusion rather than transport mechanics.
 """
 
 import asyncio

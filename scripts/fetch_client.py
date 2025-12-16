@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 from pathlib import Path
 
 from plora.grpc.client import fetch_plasmid

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Backdoor helpers for experiments (dry-run, no heavy training here).
+"""Backdoor helpers for experiments.
 
 We provide:
 * synth_backdoor_pairs(k): returns (prompt, answer) pairs with a fixed trigger.

@@ -4,8 +4,6 @@ Each node owns an ``Agent`` (from experiments.plasmid_swarm) and exposes a tiny
 line-delimited JSON socket server on localhost.  The design favours clarity
 and testability over raw throughput - we expect <10 agents and small payloads.
 
-Only *sim-only* mode is fully wired for now.  Full-mode staging of real LoRA
-files will come in a later patch once the graph engine is complete.
 """
 
 from __future__ import annotations
@@ -14,14 +12,12 @@ import asyncio
 import json
 import logging
 import random
-import socket
 from pathlib import Path
 import tempfile
-from typing import Dict, List, Mapping, MutableMapping, Sequence, Set
+from typing import MutableMapping, Sequence, Set
 import ssl
 
 from swarm.messages import AckMessage, OfferMessage, decode_ndjson, encode_ndjson
-from swarm.metrics import coverage
 
 # Core abstractions
 from plora.agent import AdapterInfo

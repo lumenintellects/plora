@@ -3,7 +3,7 @@ This duplicates logic used in experiments.plasmid_swarm but without pulling in
 heavy optional dependencies, avoiding import errors for smoke runs.
 """
 
-from typing import List, Set, Tuple
+from typing import List, Set
 
 import torch.nn as nn
 from transformers.pytorch_utils import Conv1D

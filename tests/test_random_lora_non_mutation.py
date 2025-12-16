@@ -1,8 +1,6 @@
 import hashlib
-import json
 from pathlib import Path
 
-import torch
 import pytest
 from transformers import AutoModelForCausalLM
 

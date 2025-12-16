@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 """Security gate: policy checks and lightweight alignment gate.
-
-Initial version focuses on policy verification. Behavioural probes and
-weight-space statistics can be added later without changing the Agent API.
 """
 
 from dataclasses import dataclass

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 from plora.agent import Agent, AdapterInfo
 from plora.manifest import Manifest
-from plora.gate import Policy, policy_check
+from plora.gate import Policy
 
 
 def _mk_adapter(tmp: Path, dom: str) -> AdapterInfo:

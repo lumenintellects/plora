@@ -10,7 +10,6 @@ import argparse
 import json
 import random
 from pathlib import Path
-import hashlib
 from typing import List
 
 from plora.agent import Agent, make_dummy_adapter

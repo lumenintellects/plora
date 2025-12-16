@@ -8,8 +8,6 @@ Example:
 
 import argparse
 import asyncio
-import hashlib
-import os
 import random
 import tempfile
 from pathlib import Path

@@ -1,8 +1,4 @@
 """Lightweight Agent abstraction used by Swarm Sim and future network layers.
-
-This module purposefully avoids heavy dependencies (no torch, transformers) so
-that importing it in a plain Python process is cheap.  It focuses on copying
-and verifying LoRA adapter artefacts described by *plora.yml* manifests.
 """
 
 from __future__ import annotations
@@ -10,10 +6,10 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Dict, List, Mapping, Set
+from typing import Dict, List, Set
 
 from plora.manifest import Manifest
 from plora.gate import alignment_gate, Policy

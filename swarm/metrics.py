@@ -6,15 +6,13 @@ Implements:
 * mutual information I_t between (Agent,Domain) matrix
 * rounds-to-diffuse t_d and t_all
 
-All functions are pure and rely only on built-in modules.  They accept the
-minimal state representation - a mapping agent_id -> set[str] of domains held.
 """
 
 from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Dict, Iterable, List, Mapping, Sequence, Set
+from typing import Dict, List, Mapping, Sequence, Set
 import torch
 
 __all__ = [
