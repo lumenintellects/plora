@@ -8,6 +8,8 @@ from pathlib import Path
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
 
+import pytest
+
 from plora.loader import inject
 from plora.compat import device_dtype
 
@@ -26,6 +28,7 @@ def _create_dummy_adapter(tmp_path: Path):
     return model, tmp_path
 
 
+@pytest.mark.slow
 def test_inject_latency(tmp_path: Path):
     model, adapter_dir = _create_dummy_adapter(tmp_path / "adapter")
 

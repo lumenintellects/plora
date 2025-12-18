@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
+import pytest
 import torch
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
@@ -34,6 +35,7 @@ def _param_l2(model_a, model_b) -> float:
     return s
 
 
+@pytest.mark.slow
 def test_weighted_sum_zero_is_base(tmp_path: Path):
     base = "sshleifer/tiny-gpt2"
     a1 = tmp_path / "a1"
@@ -52,6 +54,7 @@ def test_weighted_sum_zero_is_base(tmp_path: Path):
     assert dist < 1e-8
 
 
+@pytest.mark.slow
 def test_weighted_sum_matches_single_adapter(tmp_path: Path):
     base = "sshleifer/tiny-gpt2"
     a1 = tmp_path / "a1"
@@ -67,6 +70,7 @@ def test_weighted_sum_matches_single_adapter(tmp_path: Path):
     assert dist < 1e-8
 
 
+@pytest.mark.slow
 def test_fisher_weighting_prefers_higher_signal(tmp_path: Path):
     base = "sshleifer/tiny-gpt2"
     a1 = tmp_path / "a1"

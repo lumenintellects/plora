@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from plora.metrics import dataset_kl_js
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from plora.compat import device_dtype
 
 
+@pytest.mark.slow
 def test_kl_js_zero_for_identical_models():
     base = "sshleifer/tiny-gpt2"
     device, dtype = device_dtype()

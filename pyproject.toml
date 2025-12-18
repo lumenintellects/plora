@@ -33,6 +33,11 @@ pytest = "8.2.0"
 ruff = "0.4.3"
 black = "24.4.2"
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests that download HuggingFace models or datasets (deselect with '-m \"not slow\"')",
+]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

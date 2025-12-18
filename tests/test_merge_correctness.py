@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
 
@@ -21,6 +22,7 @@ def _make_adapter(base: str, out_dir: Path):
     model.save_pretrained(out_dir, safe_serialization=True)
 
 
+@pytest.mark.slow
 def test_merge(tmp_path: Path):
     base = "sshleifer/tiny-gpt2"
     dir1 = tmp_path / "a1"
@@ -40,6 +42,7 @@ def test_merge(tmp_path: Path):
     assert out.shape[0] == 1
 
 
+@pytest.mark.slow
 def test_line_search_and_module_caps(tmp_path: Path):
     base = "sshleifer/tiny-gpt2"
     dir1 = tmp_path / "a1"

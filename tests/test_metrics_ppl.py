@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from plora.dataset_loader import get_dataset
@@ -7,6 +8,7 @@ from plora.metrics import perplexity
 from plora.compat import device_dtype
 
 
+@pytest.mark.slow
 def test_perplexity_runs():
     device, dtype = device_dtype()
     base_model = "sshleifer/tiny-gpt2"
