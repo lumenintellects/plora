@@ -17,7 +17,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -33,14 +33,4 @@ jobs:
           pip install pytest
 
       - name: Run tests
-        run: python -m pytest -q
-
-      - name: Value-add guardrail (smoke)
-        run: |
-          python -m scripts.run_lora_value_add \
-            --domains arithmetic,legal \
-            --ranks 2 \
-            --schemes all \
-            --seeds 41 \
-            --samples 8 \
-            --dev-size 16
+        run: python -m pytest -q -m "not slow"

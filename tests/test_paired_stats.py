@@ -1,7 +1,5 @@
 import random
 
-import pytest
-
 from plora.metrics import paired_wilcoxon, bootstrap_ci
 
 

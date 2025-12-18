@@ -34,12 +34,12 @@ def setup_logging(log_dir: Path = Path("logs"), log_level: str = "INFO"):
 
     # Configure logging format
     formatter = logging.Formatter(
-        fmt='%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        fmt="%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # File handler - detailed logging
-    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setLevel(getattr(logging, log_level.upper()))
     file_handler.setFormatter(formatter)
 
@@ -47,8 +47,7 @@ def setup_logging(log_dir: Path = Path("logs"), log_level: str = "INFO"):
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_formatter = logging.Formatter(
-        fmt='%(asctime)s %(levelname)s %(message)s',
-        datefmt='%H:%M:%S'
+        fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
     )
     console_handler.setFormatter(console_formatter)
 
@@ -238,7 +237,7 @@ class Experiment:
         pristine = {k: v.to("cpu", copy=True) for k, v in model.state_dict().items()}
 
         # Apply torch.compile once for performance optimization
-        if hasattr(torch, 'compile') and compile_model:
+        if hasattr(torch, "compile") and compile_model:
             try:
                 model = torch.compile(model, mode="max-autotune")
                 model._is_compiled = True  # Mark as compiled
@@ -253,17 +252,18 @@ class Experiment:
     def get_training_model(self, compiled: bool = True):
         """Get a fresh model instance for training, preserving torch.compile optimization."""
         import copy
+
         base, tok, pristine = self.backbone(compile_model=compiled)[:3]
 
         # Create a fresh model instance by copying the base model
         # For compiled models, deepcopy works. For uncompiled, we reload from pristine state.
-        if compiled and hasattr(base, '_is_compiled'):
-             training_model = copy.deepcopy(base)
+        if compiled and hasattr(base, "_is_compiled"):
+            training_model = copy.deepcopy(base)
         else:
-             # For uncompiled models, or if compilation failed,
-             # create a fresh instance and load the pristine state dict.
-             uncompiled_base, tok, _ = self._load_backbone(compile_model=False)
-             training_model = uncompiled_base
+            # For uncompiled models, or if compilation failed,
+            # create a fresh instance and load the pristine state dict.
+            uncompiled_base, tok, _ = self._load_backbone(compile_model=False)
+            training_model = uncompiled_base
 
         training_model.train()
 
@@ -290,6 +290,7 @@ class Experiment:
             if manifest_path.exists():
                 # Load and validate manifest
                 from plasmid_swarm import EnhancedManifest
+
                 manifest_data = json.loads(manifest_path.read_text())
                 manifest = EnhancedManifest.model_validate(manifest_data)
 
@@ -297,7 +298,9 @@ class Experiment:
                 if manifest.domain != expected_domain:
                     log.warning(
                         "Domain mismatch in %s: expected %s, found %s",
-                        agent_dir.name, expected_domain, manifest.domain
+                        agent_dir.name,
+                        expected_domain,
+                        manifest.domain,
                     )
                     return False
 
@@ -318,7 +321,9 @@ class Experiment:
                 if actual_sha != manifest.sha256:
                     log.warning(
                         "SHA256 mismatch for %s: expected %s, got %s",
-                        adapter_path, manifest.sha256[:8], actual_sha[:8]
+                        adapter_path,
+                        manifest.sha256[:8],
+                        actual_sha[:8],
                     )
                     return False
 
@@ -332,7 +337,9 @@ class Experiment:
                 if manifest.base_model != self.base_model:
                     log.warning(
                         "Base model mismatch in %s: expected %s, found %s",
-                        agent_dir.name, self.base_model, manifest.base_model
+                        agent_dir.name,
+                        self.base_model,
+                        manifest.base_model,
                     )
                     return False
 
@@ -345,11 +352,13 @@ class Experiment:
             if tmp_dir.exists():
                 # Check for resumable checkpoints
                 from plasmid_swarm import _find_latest_checkpoint
+
                 latest_checkpoint = _find_latest_checkpoint(tmp_dir)
                 if latest_checkpoint:
                     log.info(
                         "Agent %s has resumable checkpoint: %s",
-                        agent_dir.name, latest_checkpoint.name
+                        agent_dir.name,
+                        latest_checkpoint.name,
                     )
                     # Training can be resumed, so consider it "not trained"
                     return False

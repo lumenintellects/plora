@@ -11,10 +11,20 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Merge multiple plasmids into one model.")
-    parser.add_argument("--base-model", default="sshleifer/tiny-gpt2")
-    parser.add_argument("--plasmids", nargs="+", type=Path, required=True, help="List of adapter directories")
-    parser.add_argument("--out", type=Path, required=True, help="Directory to save merged model")
+    parser = argparse.ArgumentParser(
+        description="Merge multiple plasmids into one model."
+    )
+    parser.add_argument("--base-model", default="google/gemma-3-1b-it")
+    parser.add_argument(
+        "--plasmids",
+        nargs="+",
+        type=Path,
+        required=True,
+        help="List of adapter directories",
+    )
+    parser.add_argument(
+        "--out", type=Path, required=True, help="Directory to save merged model"
+    )
     args = parser.parse_args()
 
     setup_logging()

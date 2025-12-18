@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-"""Build value_add.jsonl from scratch by evaluating artifacts (memory-safe)."""
+"""Build value_add.jsonl from scratch by evaluating artifacts
+"""
+
 from __future__ import annotations
 
 import argparse
 import gc
 import json
-import os
 import re
 import sys
 import time
@@ -14,13 +15,19 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from plora.dataset_loader import get_dataset
+from plora.config import get as cfg
 from plora.metrics import paired_wilcoxon, bootstrap_ci
 from plora.compat import device_dtype
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
 
-CONFIG_RE = re.compile(r"^(?P<domain>[^_]+)_r(?P<rank>\d+?)_(?P<scheme>[^_]+)_seed(?P<seed>\d+)$")
+CONFIG_RE = re.compile(
+    r"^(?P<domain>[^_]+)_r(?P<rank>\d+?)_(?P<scheme>[^_]+)_seed(?P<seed>\d+)$"
+)
+# Support nested layout: rank_r<rank>/<domain>_<scheme>_seed<seed>
+NESTED_PARENT_RE = re.compile(r"^rank_r(?P<rank>\d+)$")
+NESTED_CHILD_RE = re.compile(r"^(?P<domain>[^_]+)_(?P<scheme>[^_]+)_seed(?P<seed>\d+)$")
 
 
 @dataclass(frozen=True)
@@ -36,7 +43,13 @@ class Config:
         m = CONFIG_RE.match(d.name)
         if not m:
             return None
-        return cls(domain=m.group("domain"), rank=int(m.group("rank")), scheme=m.group("scheme"), seed=int(m.group("seed")), dir=d)
+        return cls(
+            domain=m.group("domain"),
+            rank=int(m.group("rank")),
+            scheme=m.group("scheme"),
+            seed=int(m.group("seed")),
+            dir=d,
+        )
 
     def key(self) -> Tuple[str, int, str, int]:
         return (self.domain, self.rank, self.scheme, self.seed)
@@ -48,6 +61,7 @@ def parse_base_model_from_artifact(dir_: Path) -> Optional[str]:
     if yml.exists():
         try:
             import yaml  # type: ignore
+
             data = yaml.safe_load(yml.read_text())
             bm = data.get("base_model") or data.get("base-model")
             if bm:
@@ -76,16 +90,39 @@ def parse_base_model_from_artifact(dir_: Path) -> Optional[str]:
     return None
 
 
-def discover_configs(root: Path, allow_domains: Optional[Iterable[str]] = None) -> List[Config]:
+def discover_configs(
+    root: Path, allow_domains: Optional[Iterable[str]] = None
+) -> List[Config]:
     allow = set(allow_domains) if allow_domains else None
     cfgs: List[Config] = []
     for child in sorted([p for p in root.iterdir() if p.is_dir()]):
+        # Flat pattern first
         cfg = Config.from_dir(child)
-        if not cfg:
+        if cfg:
+            if allow and cfg.domain not in allow:
+                continue
+            cfgs.append(cfg)
             continue
-        if allow and cfg.domain not in allow:
-            continue
-        cfgs.append(cfg)
+        # Nested pattern: rank_rX/<domain>_<scheme>_seedY
+        m_parent = NESTED_PARENT_RE.match(child.name)
+        if m_parent:
+            rank_val = int(m_parent.group("rank"))
+            for sub in sorted([p for p in child.iterdir() if p.is_dir()]):
+                m_child = NESTED_CHILD_RE.match(sub.name)
+                if not m_child:
+                    continue
+                domain = m_child.group("domain")
+                if allow and domain not in allow:
+                    continue
+                cfgs.append(
+                    Config(
+                        domain=domain,
+                        rank=rank_val,
+                        scheme=m_child.group("scheme"),
+                        seed=int(m_child.group("seed")),
+                        dir=sub,
+                    )
+                )
     cfgs.sort(key=lambda c: (c.domain, c.rank, c.scheme, c.seed))
     return cfgs
 
@@ -96,15 +133,29 @@ def _ensure_cache_dir(base_output: Path) -> Path:
     return d
 
 
-def _baseline_cache_path(cache_dir: Path, base_model: str, domain: str, dev_size: int, max_length: int) -> Path:
+def _baseline_cache_path(
+    cache_dir: Path, base_model: str, domain: str, dev_size: int, max_length: int
+) -> Path:
     safe_model = re.sub(r"[^A-Za-z0-9_.-]+", "_", base_model)
-    return cache_dir / f"baseline_{safe_model}_{domain}_dev{dev_size}_len{max_length}.json"
+    return (
+        cache_dir / f"baseline_{safe_model}_{domain}_dev{dev_size}_len{max_length}.json"
+    )
 
 
-def _adapter_cache_path(cache_dir: Path, base_model: str, adapter_dir: Path, domain: str, dev_size: int, max_length: int) -> Path:
+def _adapter_cache_path(
+    cache_dir: Path,
+    base_model: str,
+    adapter_dir: Path,
+    domain: str,
+    dev_size: int,
+    max_length: int,
+) -> Path:
     safe_model = re.sub(r"[^A-Za-z0-9_.-]+", "_", base_model)
     safe_adapter = re.sub(r"[^A-Za-z0-9_.-]+", "_", adapter_dir.name)
-    return cache_dir / f"adapter_{safe_model}_{safe_adapter}_{domain}_dev{dev_size}_len{max_length}.json"
+    return (
+        cache_dir
+        / f"adapter_{safe_model}_{safe_adapter}_{domain}_dev{dev_size}_len{max_length}.json"
+    )
 
 
 def _model_load_kwargs(device: torch.device) -> dict:
@@ -125,12 +176,16 @@ def build_encodings(tok, dataset: List[tuple[str, str]], max_length: int) -> Lis
         text = f"Question: {prompt}\nAnswer: {answer}"
         enc = tok(text, return_tensors="pt", truncation=True, max_length=max_length)
         # Keep tensors on CPU; we move per-example during eval
-        encs.append({"input_ids": enc["input_ids"], "attention_mask": enc.get("attention_mask")})
+        encs.append(
+            {"input_ids": enc["input_ids"], "attention_mask": enc.get("attention_mask")}
+        )
     return encs
 
 
 @torch.inference_mode()
-def compute_token_nlls_from_encs(model, encs: List[dict], device: torch.device) -> List[float]:
+def compute_token_nlls_from_encs(
+    model, encs: List[dict], device: torch.device
+) -> List[float]:
     model.eval()
     nlls: List[float] = []
     for enc in encs:
@@ -155,15 +210,29 @@ def make_stat(baseline: List[float], after: List[float]) -> dict:
     }
 
 
-def load_base(base_model_name: str) -> tuple[AutoModelForCausalLM, AutoTokenizer, torch.device, torch.dtype]:
+def load_base(
+    base_model_name: str,
+) -> tuple[AutoModelForCausalLM, AutoTokenizer, torch.device, torch.dtype]:
     device, dtype = device_dtype()
-    model = AutoModelForCausalLM.from_pretrained(base_model_name, torch_dtype=dtype, **_model_load_kwargs(device))
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        dtype=dtype,
+        attn_implementation="eager",
+        **_model_load_kwargs(device),
+    )
     tok = AutoTokenizer.from_pretrained(base_model_name)
     return model, tok, device, dtype
 
 
-def load_peft(base_model_name: str, adapter_dir: Path, device: torch.device, dtype: torch.dtype) -> PeftModel:
-    base = AutoModelForCausalLM.from_pretrained(base_model_name, torch_dtype=dtype, **_model_load_kwargs(device))
+def load_peft(
+    base_model_name: str, adapter_dir: Path, device: torch.device, dtype: torch.dtype
+) -> PeftModel:
+    base = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        dtype=dtype,
+        attn_implementation="eager",
+        **_model_load_kwargs(device),
+    )
     peft_model = PeftModel.from_pretrained(base, str(adapter_dir), is_trainable=False)
     return peft_model
 
@@ -187,13 +256,17 @@ def eval_one_config(
 ) -> dict:
     key_med = (base_model_name, cfg.domain)
     if key_med not in baseline_cache_mem:
-        raise RuntimeError(f"Missing baseline cache for {(base_model_name, cfg.domain)}")
+        raise RuntimeError(
+            f"Missing baseline cache for {(base_model_name, cfg.domain)}"
+        )
 
     # Trained adapter, check cache, else compute
     trained_cache_path = None
     trained_nlls: List[float]
     if use_adapter_cache and cache_dir is not None:
-        trained_cache_path = _adapter_cache_path(cache_dir, base_model_name, cfg.dir, cfg.domain, dev_size, max_length)
+        trained_cache_path = _adapter_cache_path(
+            cache_dir, base_model_name, cfg.dir, cfg.domain, dev_size, max_length
+        )
         if trained_cache_path.exists():
             try:
                 trained_nlls = json.loads(trained_cache_path.read_text())
@@ -206,7 +279,9 @@ def eval_one_config(
 
     if not trained_nlls:
         trained_model = load_peft(base_model_name, cfg.dir, device, dtype)
-        trained_nlls = compute_token_nlls_from_encs(trained_model, encs_by_domain[cfg.domain], device)
+        trained_nlls = compute_token_nlls_from_encs(
+            trained_model, encs_by_domain[cfg.domain], device
+        )
         # Cleanup trained model
         del trained_model
         if torch.cuda.is_available():
@@ -218,27 +293,74 @@ def eval_one_config(
             except Exception:
                 pass
 
-    # Latency, measure adapter load time into a fresh base
-    lat_samples: List[float] = []
-    for _ in range(latency_trials):
+    # Latency measurement: measure BOTH cold (full model load) and hot (adapter-only) injection
+    # Cold latency = time to load base model + adapter (one-time startup cost)
+    # Hot latency = time to inject adapter into already-loaded model (production pattern)
+    
+    cold_lat_samples: List[float] = []
+    hot_lat_samples: List[float] = []
+    
+    # Measure cold latency (includes base model loading) - just 1 trial since it's expensive
+    if latency_trials > 0:
         t0 = time.perf_counter()
         tmp = load_peft(base_model_name, cfg.dir, device, dtype)
-        lat_ms = (time.perf_counter() - t0) * 1e3
-        lat_samples.append(lat_ms)
-        del tmp
+        cold_lat_ms = (time.perf_counter() - t0) * 1e3
+        cold_lat_samples.append(cold_lat_ms)
+        
+        # Now use this loaded model to measure hot injection latency
+        # Extract the base model from the PEFT model for hot injection tests
+        base_for_hot = tmp.get_base_model()
+        
+        # Measure hot latency (adapter injection only, model already loaded)
+        for _ in range(max(1, latency_trials)):
+            t0 = time.perf_counter()
+            # PeftModel.from_pretrained on an already-loaded base = hot injection
+            hot_tmp = PeftModel.from_pretrained(base_for_hot, str(cfg.dir), is_trainable=False)
+            hot_lat_ms = (time.perf_counter() - t0) * 1e3
+            hot_lat_samples.append(hot_lat_ms)
+            del hot_tmp
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
+        del tmp, base_for_hot
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
-    inject_median = sorted(lat_samples)[len(lat_samples) // 2] if lat_samples else 0.0
+    
+    cold_median = sorted(cold_lat_samples)[len(cold_lat_samples) // 2] if cold_lat_samples else 0.0
+    hot_median = sorted(hot_lat_samples)[len(hot_lat_samples) // 2] if hot_lat_samples else 0.0
+    
+    # For backward compatibility, inject_median is now the hot latency (what actually matters)
+    inject_median = hot_median
 
     # Placebos
     placebo_a = None
     placebo_b = None
+    placebo_b_cross: Dict[str, dict] = {}
+    placebo_b_dir = None  # Track for cross-domain eval
     if not skip_placebos:
+        # Try subdirectory first (new convention), then sibling (old convention)
         placebo_a_dir = cfg.dir / "placebo_random"
+        if not placebo_a_dir.exists():
+            # Fall back to sibling directory pattern: {adapter_name}_placebo_random
+            placebo_a_dir = cfg.dir.parent / f"{cfg.dir.name}_placebo_random"
         placebo_b_dir = cfg.dir / "placebo_shuffle"
+        if not placebo_b_dir.exists():
+            # Fall back to sibling directory pattern: {adapter_name}_placebo_shuffle
+            placebo_b_dir = cfg.dir.parent / f"{cfg.dir.name}_placebo_shuffle"
         if placebo_a_dir.exists():
-            pa_cache_path = _adapter_cache_path(cache_dir or Path('.'), base_model_name, placebo_a_dir, cfg.domain, dev_size, max_length) if use_adapter_cache else None
+            pa_cache_path = (
+                _adapter_cache_path(
+                    cache_dir or Path("."),
+                    base_model_name,
+                    placebo_a_dir,
+                    cfg.domain,
+                    dev_size,
+                    max_length,
+                )
+                if use_adapter_cache
+                else None
+            )
             pa_nlls: List[float] = []
             if pa_cache_path is not None and pa_cache_path.exists():
                 try:
@@ -247,7 +369,9 @@ def eval_one_config(
                     pa_nlls = []
             if not pa_nlls:
                 pa_model = load_peft(base_model_name, placebo_a_dir, device, dtype)
-                pa_nlls = compute_token_nlls_from_encs(pa_model, encs_by_domain[cfg.domain], device)
+                pa_nlls = compute_token_nlls_from_encs(
+                    pa_model, encs_by_domain[cfg.domain], device
+                )
                 del pa_model
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -259,7 +383,18 @@ def eval_one_config(
                         pass
             placebo_a = make_stat(baseline_cache_mem[key_med], pa_nlls)
         if placebo_b_dir.exists():
-            pb_cache_path = _adapter_cache_path(cache_dir or Path('.'), base_model_name, placebo_b_dir, cfg.domain, dev_size, max_length) if use_adapter_cache else None
+            pb_cache_path = (
+                _adapter_cache_path(
+                    cache_dir or Path("."),
+                    base_model_name,
+                    placebo_b_dir,
+                    cfg.domain,
+                    dev_size,
+                    max_length,
+                )
+                if use_adapter_cache
+                else None
+            )
             pb_nlls: List[float] = []
             if pb_cache_path is not None and pb_cache_path.exists():
                 try:
@@ -268,7 +403,9 @@ def eval_one_config(
                     pb_nlls = []
             if not pb_nlls:
                 pb_model = load_peft(base_model_name, placebo_b_dir, device, dtype)
-                pb_nlls = compute_token_nlls_from_encs(pb_model, encs_by_domain[cfg.domain], device)
+                pb_nlls = compute_token_nlls_from_encs(
+                    pb_model, encs_by_domain[cfg.domain], device
+                )
                 del pb_model
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -280,6 +417,53 @@ def eval_one_config(
                         pass
             placebo_b = make_stat(baseline_cache_mem[key_med], pb_nlls)
 
+    # Cross-domain Placebo B evaluation (trained on domain X, evaluated on domain Y)
+    if not skip_placebos and not skip_cross and placebo_b_dir is not None and placebo_b_dir.exists():
+        pb_model_for_cross = None
+        for other_dom, other_encs in encs_by_domain.items():
+            if other_dom == cfg.domain:
+                continue
+            key_other = (base_model_name, other_dom)
+            if key_other not in baseline_cache_mem:
+                continue
+            # Cache path for cross-domain placebo B
+            pb_cross_cache_path = (
+                _adapter_cache_path(
+                    cache_dir or Path("."),
+                    base_model_name,
+                    placebo_b_dir,
+                    other_dom,  # evaluated on other domain
+                    dev_size,
+                    max_length,
+                )
+                if use_adapter_cache
+                else None
+            )
+            pb_cross_nlls: List[float] = []
+            if pb_cross_cache_path is not None and pb_cross_cache_path.exists():
+                try:
+                    pb_cross_nlls = json.loads(pb_cross_cache_path.read_text())
+                except Exception:
+                    pb_cross_nlls = []
+            if not pb_cross_nlls:
+                if pb_model_for_cross is None:
+                    pb_model_for_cross = load_peft(base_model_name, placebo_b_dir, device, dtype)
+                pb_cross_nlls = compute_token_nlls_from_encs(
+                    pb_model_for_cross, other_encs, device
+                )
+                if pb_cross_cache_path is not None:
+                    try:
+                        pb_cross_cache_path.write_text(json.dumps(pb_cross_nlls))
+                    except Exception:
+                        pass
+            pb_cross_deltas = [a - b for a, b in zip(pb_cross_nlls, baseline_cache_mem[key_other])]
+            placebo_b_cross[other_dom] = {"delta_mean": sum(pb_cross_deltas) / len(pb_cross_deltas)}
+        if pb_model_for_cross is not None:
+            del pb_model_for_cross
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
     # Cross-domain deltas
     cross: Dict[str, dict] = {}
     if not skip_cross:
@@ -290,8 +474,21 @@ def eval_one_config(
                 continue
             key_other = (base_model_name, other)
             if key_other not in baseline_cache_mem:
-                raise RuntimeError(f"Missing baseline cache for {(base_model_name, other)}")
-            cached_other_path = _adapter_cache_path(cache_dir or Path('.'), base_model_name, cfg.dir, other, dev_size, max_length) if use_adapter_cache else None
+                raise RuntimeError(
+                    f"Missing baseline cache for {(base_model_name, other)}"
+                )
+            cached_other_path = (
+                _adapter_cache_path(
+                    cache_dir or Path("."),
+                    base_model_name,
+                    cfg.dir,
+                    other,
+                    dev_size,
+                    max_length,
+                )
+                if use_adapter_cache
+                else None
+            )
             other_after: List[float] = []
             if cached_other_path is not None and cached_other_path.exists():
                 try:
@@ -300,8 +497,12 @@ def eval_one_config(
                     other_after = []
             if not other_after:
                 if trained_model_for_cross is None:
-                    trained_model_for_cross = load_peft(base_model_name, cfg.dir, device, dtype)
-                other_after = compute_token_nlls_from_encs(trained_model_for_cross, encs, device)
+                    trained_model_for_cross = load_peft(
+                        base_model_name, cfg.dir, device, dtype
+                    )
+                other_after = compute_token_nlls_from_encs(
+                    trained_model_for_cross, encs, device
+                )
                 if cached_other_path is not None:
                     try:
                         cached_other_path.write_text(json.dumps(other_after))
@@ -315,6 +516,27 @@ def eval_one_config(
                 torch.cuda.empty_cache()
             gc.collect()
 
+    # Compute effect decomposition
+    trained_stat = make_stat(baseline_cache_mem[key_med], trained_nlls)
+    effect_decomposition = None
+    if placebo_a is not None and placebo_b is not None:
+        total_effect = trained_stat["delta_mean"]  # Trained vs Base
+        domain_adaptation = placebo_b["delta_mean"]  # Placebo B vs Base (domain exposure only)
+        skill_specific = total_effect - domain_adaptation  # Trained vs Placebo B
+        # Calculate placebo_b / trained ratio
+        pb_ratio = (
+            domain_adaptation / total_effect
+            if total_effect != 0
+            else 0.0
+        )
+        effect_decomposition = {
+            "total_effect": total_effect,
+            "domain_adaptation": domain_adaptation,
+            "skill_specific": skill_specific,
+            "domain_adaptation_pct": pb_ratio * 100,
+            "skill_specific_pct": (1 - pb_ratio) * 100 if total_effect != 0 else 0.0,
+        }
+
     rec = {
         "config": {
             "domain": cfg.domain,
@@ -322,30 +544,97 @@ def eval_one_config(
             "scheme": cfg.scheme,
             "seed": cfg.seed,
         },
-        "trained": make_stat(baseline_cache_mem[key_med], trained_nlls),
+        "trained": trained_stat,
         "placebo_a": placebo_a,
         "placebo_b": placebo_b,
+        "placebo_b_cross": placebo_b_cross if placebo_b_cross else None,
+        "effect_decomposition": effect_decomposition,
         "cross_domain": cross,
-        "latency_ms": inject_median,
+        # Latency breakdown:
+        # - latency_ms: hot injection (adapter-only, model pre-loaded) - what matters for production
+        # - cold_latency_ms: full model + adapter load (one-time startup cost)
+        "latency_ms": inject_median,  # hot injection latency (backward compatible)
+        "cold_latency_ms": cold_median,  # full model load + adapter (one-time cost)
+        "hot_latency_ms": hot_median,  # adapter injection only (production pattern)
     }
     return rec
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Build value_add.jsonl from artifacts with full evaluation (memory-safe)")
+    ap = argparse.ArgumentParser(
+        description="Build value_add.jsonl from artifacts with full evaluation (memory-safe)"
+    )
     ap.add_argument("--artifacts-dir", type=Path, default=Path("results/value_add"))
-    ap.add_argument("--output", type=Path, default=Path("results/value_add/value_add.jsonl"))
-    ap.add_argument("--domains", type=lambda s: s.split(","), default=["arithmetic", "legal", "medical"], help="Domain list for dev/eval & cross-transfer")
-    ap.add_argument("--dev-size", type=int, default=512)
-    ap.add_argument("--max-length", type=int, default=512, help="Tokenizer max_length for truncation")
-    ap.add_argument("--base-model", type=str, default=os.getenv("PLORA_BASE_MODEL", ""), help="Fallback base model if not found in artifacts")
-    ap.add_argument("--overwrite", action="store_true", help="Overwrite output if exists; otherwise append/update records atomically")
-    ap.add_argument("--filter", type=str, default="", help="Optional regex to match artifact dir names")
-    ap.add_argument("--latency-trials", type=int, default=1, help="Trials to estimate adapter load latency (kept small to save time/memory)")
-    ap.add_argument("--no-disk-cache", action="store_true", help="Disable on-disk baseline NLL cache")
-    ap.add_argument("--skip-placebos", action="store_true", help="Skip evaluating placebo adapters to save time/memory")
-    ap.add_argument("--skip-cross", action="store_true", help="Skip cross-domain evaluation to save time/memory")
-    ap.add_argument("--no-adapter-cache", action="store_true", help="Disable on-disk adapter NLL cache")
+    ap.add_argument(
+        "--output", type=Path, default=Path("results/value_add/value_add.jsonl")
+    )
+    ap.add_argument(
+        "--domains",
+        type=lambda s: s.split(","),
+        default=cfg("domains", ["arithmetic", "legal", "medical"]),
+        help="Domain list for dev/eval & cross-transfer",
+    )
+    ap.add_argument("--dev-size", type=int, default=cfg("value_add.dev_size", 256))
+    ap.add_argument(
+        "--max-length",
+        type=int,
+        default=512,
+        help="Tokenizer max_length for truncation",
+    )
+    ap.add_argument(
+        "--base-model",
+        type=str,
+        default=cfg("base_model", ""),
+        help="Fallback base model if not found in artifacts",
+    )
+    ap.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite output if exists; otherwise append/update records atomically",
+    )
+    ap.add_argument(
+        "--filter",
+        type=str,
+        default="",
+        help="Optional regex to match artifact dir names",
+    )
+    ap.add_argument(
+        "--latency-trials",
+        type=int,
+        default=1,
+        help="Trials to estimate adapter load latency (kept small to save time/memory)",
+    )
+    ap.add_argument(
+        "--no-disk-cache",
+        action="store_true",
+        help="Disable on-disk baseline NLL cache",
+    )
+    ap.add_argument(
+        "--skip-placebos",
+        action="store_true",
+        help="Skip evaluating placebo adapters to save time/memory",
+    )
+    ap.add_argument(
+        "--skip-cross",
+        action="store_true",
+        help="Skip cross-domain evaluation to save time/memory",
+    )
+    ap.add_argument(
+        "--no-adapter-cache",
+        action="store_true",
+        help="Disable on-disk adapter NLL cache",
+    )
+    ap.add_argument(
+        "--list-configs",
+        action="store_true",
+        help="List discovered configs and exit (debugging)",
+    )
+    ap.add_argument(
+        "--seeds",
+        type=lambda s: [int(x) for x in s.split(",") if x],
+        default=cfg("value_add.seeds", None),
+        help="Comma-separated seeds to include (filter). Default: value_add.seeds from config or all if unset",
+    )
     args = ap.parse_args(argv)
 
     root = args.artifacts_dir
@@ -353,10 +642,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Artifacts dir not found: {root}", file=sys.stderr)
         return 2
 
-    cfgs = [c for c in discover_configs(root) if (not args.filter or re.search(args.filter, c.dir.name))]
+    seeds_filter = set(args.seeds) if args.seeds else None
+
+    cfgs = [
+        c
+        for c in discover_configs(root)
+        if (not args.filter or re.search(args.filter, c.dir.name))
+        and (seeds_filter is None or c.seed in seeds_filter)
+    ]
     if not cfgs:
-        print("No artifact configs discovered.", file=sys.stderr)
+        print("No artifact configs discovered after filtering.", file=sys.stderr)
         return 3
+
+    if args.list_configs:
+        for c in cfgs:
+            print(
+                f"{c.domain} rank={c.rank} scheme={c.scheme} seed={c.seed} -> {c.dir}"
+            )
+        print(f"Discovered {len(cfgs)} configs.")
+        return 0
 
     out_path = args.output
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -380,23 +684,32 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Resolve base model per config and group
     groups: Dict[str, List[Config]] = {}
     unresolved: List[Config] = []
-    for cfg in cfgs:
-        bm = parse_base_model_from_artifact(cfg.dir) or args.base_model
+    for conf in cfgs:
+        bm = parse_base_model_from_artifact(conf.dir) or args.base_model
         if not bm:
-            unresolved.append(cfg)
+            unresolved.append(conf)
             continue
-        groups.setdefault(bm, []).append(cfg)
+        groups.setdefault(bm, []).append(conf)
 
     # Write failures for unresolved base model
-    for cfg in unresolved:
-        by_key[cfg.key()] = {
-            "config": {"domain": cfg.domain, "rank": cfg.rank, "scheme": cfg.scheme, "seed": cfg.seed},
+    for conf in unresolved:  # renamed from cfg
+        by_key[conf.key()] = {
+            "config": {
+                "domain": conf.domain,
+                "rank": conf.rank,
+                "scheme": conf.scheme,
+                "seed": conf.seed,
+            },
             "status": "eval_failed:base_model_unknown",
             "trained": None,
             "placebo_a": None,
             "placebo_b": None,
+            "placebo_b_cross": None,
+            "effect_decomposition": None,
             "cross_domain": None,
             "latency_ms": None,
+            "cold_latency_ms": None,
+            "hot_latency_ms": None,
         }
 
     # Preload dev sets once and pre-encode (shared across groups)
@@ -419,26 +732,40 @@ def main(argv: Optional[List[str]] = None) -> int:
         if tok.pad_token_id is None and tok.eos_token_id is not None:
             tok.pad_token = tok.eos_token
         # Pre-encode per-domain once per base model
-        encs_by_domain: Dict[str, List[dict]] = {dom: build_encodings(tok, raw_dev_sets[dom], args.max_length) for dom in args.domains}
+        encs_by_domain: Dict[str, List[dict]] = {
+            dom: build_encodings(tok, raw_dev_sets[dom], args.max_length)
+            for dom in args.domains
+        }
         # Compute/restore baseline caches per domain; free baseline model immediately after
-        baseline_model = AutoModelForCausalLM.from_pretrained(bm_name, torch_dtype=dtype, **_model_load_kwargs(device))
+        baseline_model = AutoModelForCausalLM.from_pretrained(
+            bm_name,
+            dtype=dtype,
+            attn_implementation="eager",
+            **_model_load_kwargs(device),
+        )
         baseline_cache_mem: Dict[tuple[str, str], List[float]] = {}
         try:
             for dom in args.domains:
                 key = (bm_name, dom)
                 if use_disk_cache:
-                    p = _baseline_cache_path(cache_dir, bm_name, dom, args.dev_size, args.max_length)
+                    p = _baseline_cache_path(
+                        cache_dir, bm_name, dom, args.dev_size, args.max_length
+                    )
                     if p.exists():
                         try:
                             baseline_cache_mem[key] = json.loads(p.read_text())
                             continue
                         except Exception:
                             pass
-                nlls = compute_token_nlls_from_encs(baseline_model, encs_by_domain[dom], device)
+                nlls = compute_token_nlls_from_encs(
+                    baseline_model, encs_by_domain[dom], device
+                )
                 baseline_cache_mem[key] = nlls
                 if use_disk_cache:
                     try:
-                        p = _baseline_cache_path(cache_dir, bm_name, dom, args.dev_size, args.max_length)
+                        p = _baseline_cache_path(
+                            cache_dir, bm_name, dom, args.dev_size, args.max_length
+                        )
                         p.write_text(json.dumps(nlls))
                     except Exception:
                         pass
@@ -449,10 +776,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             gc.collect()
         # Evaluate all configs for this base model
         try:
-            for cfg in cfg_list:
+            for conf in cfg_list:  # renamed from cfg
                 try:
                     rec = eval_one_config(
-                        cfg,
+                        conf,
                         bm_name,
                         tok,
                         device,
@@ -469,23 +796,40 @@ def main(argv: Optional[List[str]] = None) -> int:
                     )
                 except Exception as e:
                     rec = {
-                        "config": {"domain": cfg.domain, "rank": cfg.rank, "scheme": cfg.scheme, "seed": cfg.seed},
+                        "config": {
+                            "domain": conf.domain,
+                            "rank": conf.rank,
+                            "scheme": conf.scheme,
+                            "seed": conf.seed,
+                        },
                         "status": f"eval_failed:{e.__class__.__name__}",
                         "trained": None,
                         "placebo_a": None,
                         "placebo_b": None,
+                        "placebo_b_cross": None,
+                        "effect_decomposition": None,
                         "cross_domain": None,
                         "latency_ms": None,
+                        "cold_latency_ms": None,
+                        "hot_latency_ms": None,
                     }
-                by_key[cfg.key()] = rec
+                by_key[conf.key()] = rec
                 done += 1
                 # Write checkpoint atomically
                 tmp = out_path.with_suffix(".jsonl.tmp")
                 with tmp.open("w") as f:
-                    for r in sorted(by_key.values(), key=lambda r: (r["config"]["domain"], r["config"]["rank"], r["config"]["scheme"], r["config"]["seed"])):
+                    for r in sorted(
+                        by_key.values(),
+                        key=lambda r: (
+                            r["config"]["domain"],
+                            r["config"]["rank"],
+                            r["config"]["scheme"],
+                            r["config"]["seed"],
+                        ),
+                    ):
                         f.write(json.dumps(r) + "\n")
                 tmp.replace(out_path)
-                print(f"[{done}/{total}] wrote {cfg.dir.name}")
+                print(f"[{done}/{total}] wrote {conf.dir.name}")
                 # small GC between configs
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()

@@ -14,7 +14,11 @@ def setup_logging(level: str | int = "INFO", log_dir: str | None = None) -> Path
 
     Returns the path to the log file if written, else None.
     """
-    level_num = getattr(logging, str(level).upper(), logging.INFO) if isinstance(level, str) else level
+    level_num = (
+        getattr(logging, str(level).upper(), logging.INFO)
+        if isinstance(level, str)
+        else level
+    )
 
     for h in logging.root.handlers[:]:
         logging.root.removeHandler(h)
@@ -32,6 +36,7 @@ def setup_logging(level: str | int = "INFO", log_dir: str | None = None) -> Path
         logging.getLogger().addHandler(fh)
         return log_path
     return None
+
 
 # Initialise default logging as soon as module is imported, but only once.
 if not logging.getLogger().hasHandlers():

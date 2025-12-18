@@ -14,5 +14,5 @@ message PlasmidReply {
   bytes  bytes  = 2;      // adapter payload
   string sha    = 3;      // sha256 of bytes
   string manifest = 4;    // json Manifest
-  bytes  signature = 5;   // RSA signature of bytes
+  bytes  signature = 5;   // RSA signature of bytes (detached)
 }

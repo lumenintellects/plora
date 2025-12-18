@@ -3,17 +3,17 @@ from __future__ import annotations
 """plora.loader - injection context manager and LoRA merging helpers."""
 
 import contextlib
-import copy
 import logging
 import time
 from pathlib import Path
-from typing import Iterator, List, Sequence
+from typing import Iterator, List, Sequence, Callable, Dict, Optional
 
 import torch
 from peft import PeftModel, LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 
 from .compat import device_dtype
+from .weights import weight_norms_from_safetensors
 
 log = logging.getLogger(__name__)
 
@@ -22,16 +22,18 @@ log = logging.getLogger(__name__)
 # Context manager, inject & restore
 # ---------------------------------------------------------------------------
 
+
 @contextlib.contextmanager
 def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
-    """Temporarily load a LoRA adapter into *model*.
-
-    Example::
-        with inject(base_model, Path("adapter_dir")) as peft:
-            out = peft.generate(**inputs)
-    """
-    # Cache pristine weights so we can restore quickly afterwards
-    pristine_state = {k: v.clone() for k, v in model.state_dict().items()}
+    """Temporarily load a LoRA adapter into *model*."""
+    # Cache pristine weights on CPU once per model to amortise copy overhead
+    pristine_state = getattr(model, "_plora_pristine_state", None)
+    if pristine_state is None:
+        pristine_state = {
+            k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+        }
+        setattr(model, "_plora_pristine_state", pristine_state)
+    had_peft_attr = hasattr(model, "peft_config")
 
     t0 = time.perf_counter()
     peft_model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
@@ -47,6 +49,12 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
                 if tgt is not None and tgt.shape == v.shape:
                     tgt.copy_(v)
         del peft_model
+        # Defensive cleanup: remove peft_config if PEFT attached it directly to base
+        if hasattr(model, "peft_config") and not had_peft_attr:
+            try:
+                delattr(model, "peft_config")
+            except Exception:
+                pass
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         if torch.backends.mps.is_available():
@@ -58,19 +66,28 @@ def inject(model: PreTrainedModel, adapter_dir: Path) -> Iterator[PeftModel]:
 # Merging
 # ---------------------------------------------------------------------------
 
+
 def merge_plasmids(
     base_model_name: str,
     plasmid_dirs: Sequence[Path],
     weights: Sequence[float] | None = None,
     strategy: str = "weighted_sum",
-    commit_inplace: bool = False,
+    reproject_rank: int | None = None,
+    fisher_weighted: bool = False,
+    max_delta_fro: float | None = None,
+    global_scale: float | None = None,
+    *,
+    module_caps: Optional[Dict[str, float]] = None,
+    line_search_objective: Optional[Callable[[float], float]] = None,
+    ls_dataset: Optional[List[tuple[str, str]]] = None,
+    ls_tokenizer_name: Optional[str] = None,
 ) -> PreTrainedModel:
     """Merge multiple LoRA adapters into a single model.
 
     Parameters
     ----------
     base_model_name : str
-        HF model name or path (e.g. ``"sshleifer/tiny-gpt2"``).
+        HF model name or path (e.g. ``"google/gemma-3-1b-it"``).
     plasmid_dirs : list[Path]
         Directories each containing adapter_model files.
     weights : list[float] | None
@@ -85,100 +102,374 @@ def merge_plasmids(
 
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=dtype,
+        dtype=dtype,
         device_map={"": device},
+        attn_implementation="eager",
     )
 
-    # Sequential merging: fold each adapter into the base model in turn.
-    for dir_ in plasmid_dirs:
-        tmp = PeftModel.from_pretrained(model, str(dir_), is_trainable=False)
-        model = tmp.merge_and_unload()
+    if strategy not in {"sequential", "weighted_sum"}:
+        raise ValueError(f"Unknown merge strategy: {strategy}")
 
-    if not commit_inplace:
-        return model
-    # Otherwise detach and return plain model
+    if strategy == "sequential":
+        # Fold each adapter into the base model in turn (equal weight 1).
+        for dir_ in plasmid_dirs:
+            tmp = PeftModel.from_pretrained(model, str(dir_), is_trainable=False)
+            model = tmp.merge_and_unload()
+    else:
+        # Weighted sum of LoRA deltas relative to the pristine base weights.
+        if not plasmid_dirs:
+            return model
+        if weights is None:
+            # Optionally derive weights from Fisher diagonals
+            if fisher_weighted:
+                fisher_vals: List[float] = []
+                for d in plasmid_dirs:
+                    # Use built-in Fisher diag calculator fallback if no file exists
+                    fv = _load_fisher_scalar(d)
+                    if fv is None or not (fv > 0):
+                        # compute proxy from safetensors (sum of LoRA tensor norms)
+                        try:
+                            fro_sum, _ = weight_norms_from_safetensors(d)
+                            fv = float(fro_sum)
+                        except Exception:
+                            fv = None
+                    if fv is None or not (fv > 0):
+                        fisher_vals = []
+                        break
+                    fisher_vals.append(float(fv))
+                if fisher_vals:
+                    s = sum(fisher_vals)
+                    wts = [fv / s for fv in fisher_vals]
+                else:
+                    wts = [1.0 / len(plasmid_dirs)] * len(plasmid_dirs)
+            else:
+                wts = [1.0 / len(plasmid_dirs)] * len(plasmid_dirs)
+        else:
+            if len(weights) != len(plasmid_dirs):
+                raise ValueError("weights length must match plasmid_dirs length")
+            wts = list(weights)
+
+        # Snapshot pristine base weights
+        with torch.no_grad():
+            base_sd = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        # Initialise accumulator for deltas
+        sum_delta = {k: torch.zeros_like(v) for k, v in base_sd.items()}
+
+        for dir_, w in zip(plasmid_dirs, wts):
+            # Restore base weights before applying each adapter
+            with torch.no_grad():
+                current_sd = model.state_dict()
+                for k, v_base in base_sd.items():
+                    tgt = current_sd.get(k)
+                    if tgt is not None and tgt.shape == v_base.shape:
+                        tgt.copy_(v_base)
+            tmp = PeftModel.from_pretrained(model, str(dir_), is_trainable=False)
+            model = tmp.merge_and_unload()
+            # Accumulate weighted delta relative to base
+            with torch.no_grad():
+                current_sd = model.state_dict()
+                for k, v_base in base_sd.items():
+                    v_after = current_sd.get(k)
+                    if v_after is not None and v_after.shape == v_base.shape:
+                        sum_delta[k].add_(w * (v_after - v_base))
+
+        # Apply accumulated deltas to base
+        # Optional trust-region scaling by global Frobenius norm
+        if max_delta_fro is not None and max_delta_fro > 0:
+            with torch.no_grad():
+                total_sq = 0.0
+                for v in sum_delta.values():
+                    total_sq += float((v.to(torch.float32) ** 2).sum().item())
+                if total_sq > 0.0:
+                    total_norm = total_sq**0.5
+                    if total_norm > max_delta_fro:
+                        scale = max_delta_fro / total_norm
+                        for k in sum_delta.keys():
+                            sum_delta[k].mul_(scale)
+
+        # Optional per-module trust-region caps (cap Frobenius norm per module key)
+        if module_caps:
+            with torch.no_grad():
+                for key, cap in module_caps.items():
+                    # accumulate norm over matching tensors
+                    matched = [k for k in sum_delta.keys() if key in k]
+                    if not matched:
+                        continue
+                    sq = 0.0
+                    for k in matched:
+                        sq += float((sum_delta[k].to(torch.float32) ** 2).sum().item())
+                    norm = sq**0.5
+                    if norm > 0 and norm > float(cap):
+                        scale = float(cap) / norm
+                        for k in matched:
+                            sum_delta[k].mul_(scale)
+
+        # Optional global scaling (line-search override)
+        if global_scale is not None:
+            with torch.no_grad():
+                for k in sum_delta.keys():
+                    sum_delta[k].mul_(float(global_scale))
+
+        # Optional backtracking line-search using objective(scale). If none provided,
+        # but a small dataset is given, construct a default objective based on token NLL.
+        if (
+            line_search_objective is None
+            and ls_dataset is not None
+            and global_scale is None
+        ):
+            try:
+                from .metrics import token_nlls
+            except Exception:
+                token_nlls = None  # type: ignore
+
+            if token_nlls is not None:
+                tok_name = ls_tokenizer_name or base_model_name
+                tok = AutoTokenizer.from_pretrained(tok_name)
+                # Capture baseline state to restore between evaluations
+                current_sd = model.state_dict()
+                base_state = {k: v.detach().clone() for k, v in current_sd.items()}
+
+                def _nll_objective(scale: float) -> float:
+                    with torch.no_grad():
+                        # apply scaled deltas to a temporary copy of weights
+                        for k, v_base in base_state.items():
+                            tgt = current_sd.get(k)
+                            if tgt is None or tgt.shape != v_base.shape:
+                                continue
+                            delta = sum_delta[k]
+                            tgt.copy_(v_base + delta * float(scale))
+                    # compute mean NLL over tiny dataset
+                    nll_list = token_nlls(model, tok, list(ls_dataset))  # type: ignore[arg-type]
+                    val = float(sum(nll_list) / max(1, len(nll_list)))
+                    return val
+
+                line_search_objective = _nll_objective
+
+        # Optional backtracking line-search using objective(scale)
+        if line_search_objective is not None and global_scale is None:
+            # evaluate at scales 1, 0.5, 0.25, ... until improvement
+            best_scale = 1.0
+            best_val = line_search_objective(1.0)
+            scale = 0.5
+            tried = 0
+            while tried < 5:
+                val = line_search_objective(scale)
+                if val <= best_val:
+                    best_val = val
+                    best_scale = scale
+                else:
+                    # Armijo-like: stop when no improvement
+                    break
+                scale *= 0.5
+                tried += 1
+            with torch.no_grad():
+                for k in sum_delta.keys():
+                    sum_delta[k].mul_(best_scale)
+
+        # Apply accumulated deltas to base
+        with torch.no_grad():
+            current_sd = model.state_dict()
+            for k, v_base in base_sd.items():
+                tgt = current_sd.get(k)
+                if tgt is not None and tgt.shape == v_base.shape:
+                    tgt.copy_(v_base + sum_delta[k])
+
+    # Optional: project deltas to best rank-k for 2D tensors
+    if reproject_rank is not None and reproject_rank > 0:
+        with torch.no_grad():
+            # We need base weights to form deltas. If not available (sequential),
+            # treat current as base + delta and project current itself.
+            base_for_proj = None
+            try:
+                base_for_proj = base_sd  # defined in weighted_sum path
+            except NameError:
+                pass
+            current_sd = model.state_dict()
+            for k, v in current_sd.items():
+                if v.ndim == 2:
+                    if (
+                        base_for_proj is not None
+                        and k in base_for_proj
+                        and base_for_proj[k].shape == v.shape
+                    ):
+                        base_v = base_for_proj[k]
+                    else:
+                        base_v = torch.zeros_like(v)
+                    delta = (v - base_v).detach().to(torch.float32, copy=True)
+                    # Move to CPU for SVD if necessary
+                    delta_cpu = delta.cpu()
+                    try:
+                        U, S, Vh = torch.linalg.svd(delta_cpu, full_matrices=False)
+                    except RuntimeError:
+                        # Fallback: skip projection on failure
+                        continue
+                    r = min(reproject_rank, S.shape[0])
+                    if r <= 0:
+                        continue
+                    Ur = U[:, :r]
+                    Sr = S[:r]
+                    Vhr = Vh[:r, :]
+                    delta_k = (Ur * Sr) @ Vhr
+                    v.copy_((base_v + delta_k.to(v.device)).to(v.dtype))
+
+    # Note: commit_inplace retained for API compatibility but currently a no-op.
+    # The returned model already has deltas applied; callers can save or continue using it directly.
     return model
 
+
+def _load_fisher_scalar(adapter_dir: Path) -> float | None:
+    """Try to load a scalar Fisher signal for weighting from adapter_dir.
+
+    Supports:
+    - JSON file "fisher_diag.json" with either {"sum": float} or {"param": value,...}
+    - safetensors file "fisher_diag.safetensors" with tensor "diag" or any tensors summed.
+    Returns None if nothing usable found.
+    """
+    # JSON variant
+    try:
+        j = adapter_dir / "fisher_diag.json"
+        if j.exists():
+            import json
+
+            obj = json.loads(j.read_text())
+            if isinstance(obj, dict):
+                if "sum" in obj and isinstance(obj["sum"], (int, float)):
+                    return float(obj["sum"])
+                # sum numeric values
+                vals = [float(v) for v in obj.values() if isinstance(v, (int, float))]
+                if vals:
+                    return float(sum(vals))
+    except Exception:
+        pass
+
+    # safetensors variant
+    try:
+        from safetensors.torch import load_file  # type: ignore
+        import torch as _t
+
+        st = adapter_dir / "fisher_diag.safetensors"
+        if st.exists():
+            tensors = load_file(str(st))
+            if "diag" in tensors:
+                t = tensors["diag"]
+                if isinstance(t, _t.Tensor):
+                    return float(_t.sum(_t.abs(t)).item())
+            # otherwise sum magnitudes of all tensors
+            total = 0.0
+            for t in tensors.values():
+                if isinstance(t, _t.Tensor):
+                    total += float(_t.sum(_t.abs(t)).item())
+            return total if total > 0 else None
+    except Exception:
+        pass
+    return None
+
+    # (Deprecated path removed) – commit_inplace is a no-op; function always returns merged model above.
+
+
 # ---------------------------------------------------------------------------
-# Placebo LoRA generator – random weights (for control experiments)
+# Placebo LoRA generator, random weights (for control experiments)
 # ---------------------------------------------------------------------------
 
 
 def random_lora(
-    model: PreTrainedModel,
+    base_or_model: str | PreTrainedModel,
     output_dir: Path,
     *,
     r: int | None = None,
     target_modules: List[str] | None = None,
     like_adapter_dir: Path | None = None,
-) -> Path:
-    """Create a *random* LoRA adapter compatible with *model* at *output_dir*.
+):
+    """Create a *random* LoRA adapter at *output_dir* WITHOUT mutating caller model.
 
     Parameters
     ----------
-    model : PreTrainedModel
-        Base model instance to which the adapter will later be applied.
+    base_or_model : str | PreTrainedModel
+        HF model name or an existing (possibly already PEFT-wrapped) model. If a
+        model instance is provided we attempt to derive its original name from
+        ``config._name_or_path`` and load a *fresh* copy so we do not stack
+        adapters onto the passed instance.
     output_dir : Path
-        Directory where the adapter weights & config will be written.  Will be
-        created if it does not exist.
-    r : int, default 8
-        LoRA rank.
+        Destination directory for adapter files.
+    r : int, default None
+        LoRA rank (defaults to 2 if not inferred).
     target_modules : list[str] | None
-        Which sub-modules to target.  If *None* we try to inspect *model* and
-        fall back to *like_adapter_dir*'s config, then to the GPT-style default
-        of ["q_proj", "k_proj", "v_proj", "o_proj"].
+        Explicit target modules; if omitted we infer (or copy from like_adapter_dir).
     like_adapter_dir : Path | None
-        Optional existing adapter directory; if provided we replicate its LoRA
-        configuration (except the weights, which are random).
+        If provided, replicate its adapter_config (except weights).
 
     Returns
     -------
     Path
-        The *output_dir* where files were written.
+        Directory where adapter was written.
     """
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Determine base model name (never reuse the caller instance to avoid stacking wrappers)
+    if isinstance(base_or_model, str):
+        base_model_name = base_or_model
+    else:  # PreTrainedModel
+        base_model_name = getattr(base_or_model.config, "_name_or_path", None) or getattr(
+            base_or_model, "name_or_path", ""
+        )
+        if not base_model_name:
+            raise ValueError(
+                "random_lora: cannot infer base model name from provided model; pass a string instead"
+            )
+
+    # Load a pristine base model lightweight (CPU if possible) just for adapter construction
+    device, dtype = device_dtype()
+    base = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        dtype=dtype,
+        device_map={"": device},
+        attn_implementation="eager",
+        low_cpu_mem_usage=True,
+    )
+
     # ---------------------------------------------------------------------
-    # Determine LoRA configuration
+    # Determine LoRA configuration (rank/modules/dropout/alpha)
     # ---------------------------------------------------------------------
     if like_adapter_dir and (like_adapter_dir / "adapter_config.json").exists():
         import json
 
-        cfg = json.loads((like_adapter_dir / "adapter_config.json").read_text())
-        r = cfg.get("r", r)
-        target_modules = cfg.get("target_modules", target_modules)
-        alpha = cfg.get("lora_alpha", r * 2)
-        dropout = cfg.get("lora_dropout", 0.0)
+        cfg_json = json.loads((like_adapter_dir / "adapter_config.json").read_text())
+        r = cfg_json.get("r", r)
+        target_modules = cfg_json.get("target_modules", target_modules)
+        alpha = cfg_json.get("lora_alpha", (r or 2) * 2)
+        dropout = cfg_json.get("lora_dropout", 0.0)
     else:
         if r is None:
-            r = 2  # minimal default
+            r = 2
         alpha = r * 2
         dropout = 0.0
 
-    # Fallback discovery of target modules if still None
+    # Infer target modules if still None
     if target_modules is None:
         cand = ["q_proj", "k_proj", "v_proj", "o_proj", "c_attn", "c_proj"]
-        found = {suffix for name, _ in model.named_modules() for suffix in cand if name.endswith(suffix)}
+        found = {
+            suffix
+            for name, _ in base.named_modules()
+            for suffix in cand
+            if name.endswith(suffix)
+        }
         target_modules = sorted(found) if found else ["c_attn"]
 
-    l_cfg = LoraConfig(r=r, lora_alpha=alpha, target_modules=target_modules, lora_dropout=dropout)
+    l_cfg = LoraConfig(
+        r=r, lora_alpha=alpha, target_modules=target_modules, lora_dropout=dropout
+    )
+    peft_tmp = get_peft_model(base, l_cfg)  # base copy only
 
-    # Create a trainable PEFT wrapper to easily write weights later
-    peft_model = get_peft_model(model, l_cfg)
-
-    # ---------------------------------------------------------------------
-    # Randomise LoRA weights, use very small scale (1e-4) so placebo is inert
-    # ---------------------------------------------------------------------
+    # Randomize weights small scale
     with torch.no_grad():
-        for n, p in peft_model.named_parameters():
+        for n, p in peft_tmp.named_parameters():
             if "lora_A" in n or "lora_B" in n:
                 p.copy_(torch.randn_like(p) * 1e-4)
 
-    peft_model.save_pretrained(output_dir, safe_serialization=True)
+    peft_tmp.save_pretrained(output_dir, safe_serialization=True)
 
-    # Clean up memory, we created extra weights on model's device
-    del peft_model
+    # Cleanup
+    del peft_tmp, base
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 

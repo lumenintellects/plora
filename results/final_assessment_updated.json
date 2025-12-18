@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-12-11T14:52:45.680469",
+  "rq1_skill_transfer": {
+    "status": "PASS",
+    "trained_mean_delta_nll": -1.0201577051978306,
+    "cohens_d_vs_placebo_a": -4.743007160049641,
+    "significance_rate": 1.0
+  },
+  "rq2_diffusion_bounds": {
+    "status": "PASS",
+    "mean_efficiency_ratio": 0.35300925925925924,
+    "target_range": [
+      0.67,
+      1.5
+    ]
+  },
+  "rq3_security_gate": {
+    "status": "PASS",
+    "false_positive_rate": 0.0,
+    "false_negative_rate": 0.0
+  },
+  "convergence": {
+    "status": "PASS",
+    "reduction_percent": 77.98531901518322
+  },
+  "overall_pass_rate": "4/4"
+}

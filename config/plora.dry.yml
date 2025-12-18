@@ -1,0 +1,120 @@
+# DRY RUN CONFIG
+
+# base_model: Hugging Face model id for training and evaluation.
+# Meaning: Backbone LM used across training, value-add, and metrics.
+# Options: any causal LM (e.g., google/gemma-3-1b-it for CPU; google/gemma-3-1b-it for better quality).
+# Rationale: Pick a small/efficient model for speed in dry runs.
+base_model: google/gemma-3-1b-it
+
+# eval_split: Dataset split for evaluation.
+# Meaning: Which split value-add and metrics read (not training split).
+# Options: validation, test, or dataset-specific names.
+# Rationale: "validation" is widely available and avoids test leakage.
+eval_split: validation
+
+# samples: Per-domain training sample cap.
+# Meaning: Upper bound on training pairs; controls runtime vs. adapter stability.
+# Options: integer ≥ 1; larger → slower but more stable; smaller → faster but noisier.
+# Rationale: 32 keeps end-to-end runs fast.
+samples: 32
+
+# latency_budget_ms: Guardrail for latency checks (ms).
+# Meaning: Upper bound on acceptable median latency (e.g., LoRA inject/remove) before failing.
+# Options: 250–500 (strict CI/GPU), ~1000 (GPU), ~5000 (CPU laptop).
+# Rationale: 5000 tolerates CPU variability in smoke tests.
+latency_budget_ms: 5000
+
+# domains: Labels for per-domain adapters.
+# Meaning: Defines domains for training/value-add/swarms.
+# Options: any consistent labels supported by dataset loaders.
+# Rationale: Core trio aligned with repository fixtures.
+domains: [arithmetic, legal, medical]
+
+# allowed_ranks: Whitelisted LoRA ranks in Security Gate.
+# Meaning: Only adapters with these ranks will pass policy.
+# Options: list of positive integers (e.g., [1,4,8,16]).
+# Rationale: Smaller ranks favored for speed in dry runs.
+allowed_ranks: [1]
+
+# allowed_targets: Target-module whitelist for Security Gate.
+# Meaning: Restricts LoRA target modules (suffix-based); "attention" maps to ATTENTION_SUFFIXES.
+# Options: attention | all | explicit list of suffixes.
+# Rationale: "attention" is a safe, repo-aligned baseline.
+allowed_targets: attention
+
+# graph: Overlay parameters for Swarm v2 diffusion.
+# Meaning: Controls topology/connectivity → spectral gap λ2 → diffusion speed.
+# Options: see fields; tune by topology and size.
+# Rationale: Balanced defaults for quick runs.
+graph:
+  # p: ER edge probability; higher → denser → larger λ2 → faster diffusion.
+  # Options: ~0.15–0.4 for N∈[20,160].
+  # Rationale: 0.3 for faster dry diffusion.
+  p: 0.3
+  # ws_k: WS degree parameter (even), neighbors per side.
+  # Options: 2–8 (even) for small N.
+  # Rationale: 4 offers small-world connectivity without high degree.
+  ws_k: 4
+  # ws_beta: WS rewiring probability; 0 → lattice, 1 → random.
+  # Options: 0.1–0.4 typical.
+  # Rationale: 0.2 yields balanced small-world behavior.
+  ws_beta: 0.2
+  # ba_m: BA edges per arriving node.
+  # Options: 1–4 typical.
+  # Rationale: 2 keeps average degree modest while forming hubs.
+  ba_m: 2
+
+# value_add: Evaluation grid defaults.
+# Meaning: Controls evaluation set size and adapter grid.
+# Options: see fields below.
+# Rationale: Compact grid for smoke significance.
+value_add:
+  # dev_size: Number of eval pairs per domain. Larger → tighter CIs, more time.
+  # Options: 256–1024+ depending on resources.
+  # Rationale: 256 balances CI precision and speed.
+  dev_size: 256
+  # ranks: LoRA ranks to evaluate.
+  # Options: list of integers; include higher ranks to test capacity effects.
+  # Rationale: Minimal set to demonstrate scaling.
+  ranks: [1]
+  # schemes: Target-module schemes.
+  # Options: attention | mlp | all.
+  # Rationale: "attention" is fastest for dry runs (fewest parameters).
+  schemes: [attention]
+  # seeds: RNG seeds for repeatability; more seeds → more robust stats.
+  # Options: list of integers; e.g., [41,42,43].
+  # Rationale: Single seed suffices for smoke runs.
+  seeds: [41]
+  # placebo_b_rank: Rank used for label-shuffle placebo adapter.
+  # Rationale: Keep small for fast placebo training.
+  placebo_b_rank: 1
+
+# train: Central training hyperparameters for adapter fine-tuning.
+train:
+  lr: 0.0002        # Learning rate for AdamW
+  dropout: 0.1      # LoRA dropout probability
+  max_len: 128      # Max token length for prompt+answer encoding
+  train_split: 0.8  # Fraction of samples used for training
+  seed: 42          # Global training seed (placebo shuffle etc.)
+
+# probes: Target FP/FN for probe calibration.
+probes:
+  target_fp: 0.05
+  target_fn: 0.1
+
+# swarm: Defaults for simulation parameters.
+swarm:
+  trojan_rate: 0.3  # Fraction of agents initially trojan
+  quorum: 2         # Consensus quorum size
+
+# gate: Threshold overrides (optional, usually keep defaults)
+# gate:
+#   tau_trigger: 0.2
+#   tau_clean_delta: -0.05
+#   tau_tensor_z: 5.0
+
+# Alternating train-merge study parameters (minimal for dry runs)
+alt_train_merge:
+  cycles: 2      # Minimal cycles for smoke test
+  samples: 16    # Very small for speed
+  rank: 1        # Must match allowed_ranks for security gate to pass
