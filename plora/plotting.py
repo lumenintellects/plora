@@ -485,10 +485,13 @@ def plot_swarm_dynamics(
     ax = axes[1, 1]
     mean_accepted = grouped[('accepted_count', 'mean')]
     std_accepted = grouped[('accepted_count', 'std')]
-    ax.bar(grouped.index, mean_accepted, yerr=std_accepted, alpha=0.7, color='coral', capsize=3)
+    lower_err = np.minimum(std_accepted, mean_accepted)
+    upper_err = std_accepted
+    ax.bar(grouped.index, mean_accepted, yerr=[lower_err, upper_err], alpha=0.7, color='coral', capsize=3)
     ax.set_xlabel('Round')
     ax.set_ylabel('Accepted Offers')
     ax.set_title('Offers Accepted per Round')
+    ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3, axis='y')
     
     # Title
