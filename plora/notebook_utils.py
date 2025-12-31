@@ -124,10 +124,28 @@ def get_experiment_summary_stats(experiment_data: Dict[str, Any]) -> Dict[str, A
     """
     stats = {}
 
-    # Swarm simulation stats
-    if 'swarm_summary' in experiment_data:
+    # Use thesis_sweep for swarm stats (the main experimental data)
+    # thesis_sweep contains the full 72-experiment campaign used for RQ2/RQ3
+    thesis_sweep = experiment_data.get('thesis_sweep', [])
+    if thesis_sweep:
+        stats['swarm_experiments'] = len(thesis_sweep)
+        stats['swarm_data_source'] = 'thesis_sweep.jsonl'
+        
+        topologies = [exp.get('topology', 'unknown') for exp in thesis_sweep]
+        stats['topologies'] = sorted(set(topologies))
+        
+        n_agents = [exp.get('N', 0) for exp in thesis_sweep]
+        stats['agent_counts'] = {
+            'min': min(n_agents) if n_agents else 0,
+            'max': max(n_agents) if n_agents else 0,
+            'unique': len(set(n_agents)),
+            'values': sorted(set(n_agents))
+        }
+    # Use swarm_summary if thesis_sweep not available
+    elif 'swarm_summary' in experiment_data:
         swarm_data = experiment_data['swarm_summary']
         stats['swarm_experiments'] = len(swarm_data)
+        stats['swarm_data_source'] = 'summary_v2.json'
 
         if swarm_data:
             topologies = [exp.get('topology', 'unknown') for exp in swarm_data]
