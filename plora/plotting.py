@@ -502,7 +502,11 @@ def plot_swarm_dynamics(
         filter_str.append(f"N={N}")
     filter_label = f" ({', '.join(filter_str)})" if filter_str else " (all configurations)"
     
-    n_exps = len(rounds_df[['topology', 'N', 'seed']].drop_duplicates())
+    # Count unique experiments including trojan_rate
+    exp_cols = ['topology', 'N', 'seed']
+    if 'trojan_rate' in rounds_df.columns:
+        exp_cols.append('trojan_rate')
+    n_exps = len(rounds_df[exp_cols].drop_duplicates())
     fig.suptitle(f"{title_prefix}Swarm Dynamics{filter_label}\n{n_exps} experiments", fontsize=12)
     plt.tight_layout()
     
