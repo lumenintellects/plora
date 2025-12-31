@@ -219,3 +219,5 @@ plora.override.yml
 .calib_tmp
 .sweep_tmp
 poster/
+thesis/
+figures/
