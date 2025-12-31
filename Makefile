@@ -199,9 +199,16 @@ math-export:
 	@echo "Exporting math notebook to PDF (requires nbconvert/pandoc)" && \
 	poetry run jupyter nbconvert --to pdf notebooks/math_foundations.ipynb || echo "Install nbconvert/pandoc to enable export."
 
-.PHONY: thesis-sweep
+.PHONY: thesis-sweep thesis-sweep-full
 thesis-sweep:
 	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds $$(poetry run python -m plora.config value_add.seeds | tr -d '[] ') --p $$(poetry run python -m plora.config graph.p) --rounds 15 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+
+# Full thesis sweep: 3 topologies × 4 sizes × 3 seeds × 2 trojan_rates = 72 experiments
+# Use this for final analysis; includes per-round coverage, entropy, and accepted counts
+thesis-sweep-full:
+	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42,43 --p $$(poetry run python -m plora.config graph.p) --rounds 15 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	@echo "Generated 72 experiments (3 topos × 4 sizes × 3 seeds × 2 trojan_rates)"
+	@wc -l results/thesis_sweep.jsonl
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
@@ -381,7 +388,7 @@ full-experiment: config-use-full
 		run_step 9 "Summarising v2 reports" $(MAKE) swarm-v2-eval && \
 		run_step 10 "Training monolithic baseline (rank 4)" $(MAKE) monolithic-r4 && \
 		run_step 11 "Value-add rank sweep" $(MAKE) value-add-rank-sweep && \
-		run_step 12 "Thesis-scale sweep (ER/WS/BA)" $(MAKE) thesis-sweep && \
+		run_step 12 "Thesis-scale sweep (ER/WS/BA, 72 experiments)" $(MAKE) thesis-sweep-full && \
 		run_step 13 "Ablations (rank/scheme)" $(MAKE) ablation && \
 		run_step 14 "Alternating train-merge stability" $(MAKE) alt-train-merge && \
 		run_step 15 "Value-add JSONL verification" sh -c 'test -f results/value_add/value_add.jsonl && echo "  ✓ value_add.jsonl has $$(wc -l < results/value_add/value_add.jsonl | tr -d " ") records"' && \
