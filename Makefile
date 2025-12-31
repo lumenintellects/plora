@@ -201,12 +201,13 @@ math-export:
 
 .PHONY: thesis-sweep thesis-sweep-full
 thesis-sweep:
-	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds $$(poetry run python -m plora.config value_add.seeds | tr -d '[] ') --p $$(poetry run python -m plora.config graph.p) --rounds 15 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds $$(poetry run python -m plora.config value_add.seeds | tr -d '[] ') --p $$(poetry run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
 
 # Full thesis sweep: 3 topologies × 4 sizes × 3 seeds × 2 trojan_rates = 72 experiments
 # Use this for final analysis; includes per-round coverage, entropy, and accepted counts
+# 6 rounds is sufficient: max t_obs=2, max t_pred=4, MI→0 by round 4
 thesis-sweep-full:
-	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42,43 --p $$(poetry run python -m plora.config graph.p) --rounds 15 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42,43 --p $$(poetry run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
 	@echo "Generated 72 experiments (3 topos × 4 sizes × 3 seeds × 2 trojan_rates)"
 	@wc -l results/thesis_sweep.jsonl
 
