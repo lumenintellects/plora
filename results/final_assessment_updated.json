@@ -1,14 +1,14 @@
 {
-  "timestamp": "2025-12-11T14:52:45.680469",
+  "timestamp": "2025-12-31T13:41:52.202957",
   "rq1_skill_transfer": {
     "status": "PASS",
     "trained_mean_delta_nll": -1.0201577051978306,
     "cohens_d_vs_placebo_a": -4.743007160049641,
-    "significance_rate": 1.0
+    "paired_wilcoxon_p": 5.566890796686133e-15
   },
   "rq2_diffusion_bounds": {
     "status": "PASS",
-    "mean_efficiency_ratio": 0.35300925925925924,
+    "mean_efficiency_ratio": 0.3449074074074074,
     "target_range": [
       0.67,
       1.5
