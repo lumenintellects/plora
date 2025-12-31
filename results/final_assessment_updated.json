@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-31T14:32:10.832384",
+  "timestamp": "2025-12-31T19:42:28.114818",
   "rq1_skill_transfer": {
     "status": "PASS",
     "trained_mean_delta_nll": -1.0201577051978306,
@@ -8,7 +8,7 @@
   },
   "rq2_diffusion_bounds": {
     "status": "PASS",
-    "mean_efficiency_ratio": 0.3449074074074074,
+    "mean_efficiency_ratio": 0.3483796296296296,
     "target_range": [
       0.67,
       1.5
@@ -17,7 +17,19 @@
   "rq3_security_gate": {
     "status": "PASS",
     "false_positive_rate": 0.0,
-    "false_negative_rate": 0.0
+    "false_negative_rate": 0.0,
+    "fp_wilson_ci_95": [
+      0.0,
+      0.00013613599220174937
+    ],
+    "fn_wilson_ci_95": [
+      0.0,
+      0.00047604404031920523
+    ],
+    "clean_offers_total": 28215,
+    "trojan_offers_total": 8066,
+    "rejected_clean_total": 0,
+    "accepted_trojan_total": 0
   },
   "convergence": {
     "status": "PASS",
