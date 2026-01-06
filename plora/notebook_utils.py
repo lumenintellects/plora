@@ -124,10 +124,28 @@ def get_experiment_summary_stats(experiment_data: Dict[str, Any]) -> Dict[str, A
     """
     stats = {}
 
-    # Swarm simulation stats
-    if 'swarm_summary' in experiment_data:
+    # Use thesis_sweep for swarm stats (the main experimental data)
+    # thesis_sweep contains the full 72-experiment campaign used for RQ2/RQ3
+    thesis_sweep = experiment_data.get('thesis_sweep', [])
+    if thesis_sweep:
+        stats['swarm_experiments'] = len(thesis_sweep)
+        stats['swarm_data_source'] = 'thesis_sweep.jsonl'
+        
+        topologies = [exp.get('topology', 'unknown') for exp in thesis_sweep]
+        stats['topologies'] = sorted(set(topologies))
+        
+        n_agents = [exp.get('N', 0) for exp in thesis_sweep]
+        stats['agent_counts'] = {
+            'min': min(n_agents) if n_agents else 0,
+            'max': max(n_agents) if n_agents else 0,
+            'unique': len(set(n_agents)),
+            'values': sorted(set(n_agents))
+        }
+    # Use swarm_summary if thesis_sweep not available
+    elif 'swarm_summary' in experiment_data:
         swarm_data = experiment_data['swarm_summary']
         stats['swarm_experiments'] = len(swarm_data)
+        stats['swarm_data_source'] = 'summary_v2.json'
 
         if swarm_data:
             topologies = [exp.get('topology', 'unknown') for exp in swarm_data]
@@ -422,3 +440,125 @@ def get_swarm_df(experiment_data: Dict[str, Any] | None = None) -> pd.DataFrame:
     if experiment_data is None:
         experiment_data = load_experiment_data()
     return extract_swarm_metrics(experiment_data)
+
+
+# =============================================================================
+# Thesis Sweep Data Extraction Functions
+# =============================================================================
+
+def extract_thesis_sweep_df(experiment_data: Dict[str, Any]) -> pd.DataFrame:
+    """Extract thesis_sweep experiments into a summary DataFrame.
+    
+    Args:
+        experiment_data: Dictionary containing experiment data with 'thesis_sweep' key
+        
+    Returns:
+        DataFrame with one row per experiment containing topology, N, seed,
+        lambda2, t_pred, t_obs, trojan_rate, and efficiency ratio.
+    """
+    thesis_sweep = experiment_data.get('thesis_sweep', [])
+    if not thesis_sweep:
+        return pd.DataFrame()
+    
+    records = []
+    for exp in thesis_sweep:
+        t_obs = exp.get('t_obs')
+        t_pred = exp.get('t_pred')
+        efficiency = t_obs / t_pred if (t_obs is not None and t_pred and t_pred > 0) else None
+        
+        record = {
+            'topology': exp.get('topology'),
+            'N': exp.get('N'),
+            'seed': exp.get('seed'),
+            'lambda2': exp.get('lambda2'),
+            't_pred': t_pred,
+            't_obs': t_obs,
+            'trojan_rate': exp.get('trojan_rate'),
+            'efficiency_ratio': efficiency,
+            'n_rounds': len(exp.get('mi_series', [])),
+        }
+        
+        # Gate metrics
+        gate = exp.get('gate', {})
+        record['accepted_clean'] = gate.get('accepted_clean_total', 0)
+        record['accepted_trojan'] = gate.get('accepted_trojan_total', 0)
+        record['rejected_clean'] = gate.get('rejected_clean_total', 0)
+        record['rejected_trojan'] = gate.get('rejected_trojan_total', 0)
+        
+        records.append(record)
+    
+    return pd.DataFrame(records)
+
+
+def extract_thesis_sweep_rounds_df(experiment_data: Dict[str, Any]) -> pd.DataFrame:
+    """Extract per-round metrics from thesis_sweep into a long-form DataFrame.
+    
+    Args:
+        experiment_data: Dictionary containing experiment data with 'thesis_sweep' key
+        
+    Returns:
+        Long-form DataFrame with columns: topology, N, seed, trojan_rate, round,
+        mutual_information, entropy_avg, accepted_count, plus per-domain coverage.
+    """
+    thesis_sweep = experiment_data.get('thesis_sweep', [])
+    if not thesis_sweep:
+        return pd.DataFrame()
+    
+    rows = []
+    for exp in thesis_sweep:
+        topology = exp.get('topology')
+        N = exp.get('N')
+        seed = exp.get('seed')
+        trojan_rate = exp.get('trojan_rate')
+        
+        rounds_data = exp.get('rounds', [])
+        mi_series = exp.get('mi_series', [])
+        entropy_series = exp.get('entropy_series', [])
+        accepted_series = exp.get('accepted_series', [])
+        coverage_series = exp.get('coverage_series', [])
+        
+        # Prefer 'rounds' if available (has full data), else use series arrays
+        if rounds_data:
+            for r in rounds_data:
+                row = {
+                    'topology': topology,
+                    'N': N,
+                    'seed': seed,
+                    'trojan_rate': trojan_rate,
+                    'round': r.get('t'),
+                    'mutual_information': r.get('mutual_information'),
+                    'entropy_avg': r.get('entropy_avg'),
+                    'accepted_count': r.get('accepted_count', 0),
+                }
+                # Add per-domain coverage
+                cov = r.get('coverage', {})
+                for domain, val in cov.items():
+                    row[f'coverage_{domain}'] = val
+                rows.append(row)
+        else:
+            # Fallback to series arrays
+            n_rounds = max(len(mi_series), len(entropy_series), len(accepted_series))
+            for t in range(n_rounds):
+                row = {
+                    'topology': topology,
+                    'N': N,
+                    'seed': seed,
+                    'trojan_rate': trojan_rate,
+                    'round': t,
+                    'mutual_information': mi_series[t] if t < len(mi_series) else None,
+                    'entropy_avg': entropy_series[t] if t < len(entropy_series) else None,
+                    'accepted_count': accepted_series[t] if t < len(accepted_series) else 0,
+                }
+                if t < len(coverage_series):
+                    cov = coverage_series[t]
+                    for domain, val in cov.items():
+                        row[f'coverage_{domain}'] = val
+                rows.append(row)
+    
+    if not rows:
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(rows)
+    return df.sort_values(['topology', 'N', 'seed', 'round']).reset_index(drop=True)
+
+

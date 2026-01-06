@@ -23,6 +23,7 @@ from plora.gate import Policy
 from plora.targets import ATTENTION_SUFFIXES
 from swarm.graph_v2 import barabasi_albert_graph, erdos_renyi_graph, watts_strogatz_graph
 from swarm.metrics import coverage as cov_fn
+from swarm.metrics import entropy_avg as entropy_fn
 from swarm.metrics import mutual_information as mi_fn
 from swarm.metrics import spectral_gap
 from swarm.swarm_v2 import run_gossip
@@ -226,6 +227,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                                             nonlocal prev_I
                                             knowledge = {agent.agent_id: set(agent.knowledge) for agent in agents}
                                             coverage = cov_fn(knowledge)
+                                            entropy = entropy_fn(coverage_map=coverage)
                                             mi_val = mi_fn(knowledge)
                                             delta = (mi_val - prev_I) if prev_I is not None else 0.0
                                             prev_I = mi_val
@@ -233,8 +235,10 @@ def main(argv: Sequence[str] | None = None) -> None:
                                                 {
                                                     "t": t,
                                                     "coverage": coverage,
+                                                    "entropy_avg": entropy,
                                                     "mutual_information": mi_val,
                                                     "mi_delta": delta,
+                                                    "accepted_count": len(events),
                                                 }
                                             )
 
@@ -257,10 +261,11 @@ def main(argv: Sequence[str] | None = None) -> None:
                                                 t_obs = entry["t"]
                                                 break
 
+                                        # Collect ALL gate counters for proper FP/FN rate computation
+                                        accepted_clean = sum(getattr(agent, "accepted_clean", 0) for agent in agents)
+                                        accepted_trojan = sum(getattr(agent, "accepted_trojan", 0) for agent in agents)
                                         rejected_clean = sum(getattr(agent, "rejected_clean", 0) for agent in agents)
-                                        accepted_trojan = sum(
-                                            getattr(agent, "accepted_trojan", 0) for agent in agents
-                                        )
+                                        rejected_trojan = sum(getattr(agent, "rejected_trojan", 0) for agent in agents)
 
                                         record = {
                                             "topology": topo,
@@ -281,10 +286,19 @@ def main(argv: Sequence[str] | None = None) -> None:
                                                 "tau_norm_z": tau_nz,
                                                 "tau_clean_delta": tau_cd,
                                             },
+                                            # Full per-round data for comprehensive plotting
+                                            "rounds": round_logs,
+                                            # Convenience arrays (backwards-compatible)
                                             "mi_series": [entry["mutual_information"] for entry in round_logs],
+                                            "coverage_series": [entry["coverage"] for entry in round_logs],
+                                            "entropy_series": [entry["entropy_avg"] for entry in round_logs],
+                                            "accepted_series": [entry["accepted_count"] for entry in round_logs],
                                             "gate": {
-                                                "rejected_clean_total": rejected_clean,
+                                                # All four counters for proper FP/FN rate computation
+                                                "accepted_clean_total": accepted_clean,
                                                 "accepted_trojan_total": accepted_trojan,
+                                                "rejected_clean_total": rejected_clean,
+                                                "rejected_trojan_total": rejected_trojan,
                                             },
                                         }
                                         outf.write(json.dumps(record) + "\n")

@@ -213,8 +213,11 @@ results/abl*
 results/abl_arithmetic_r2_all/
 results/alt*
 results/figures
+results/.experiment_state
 docs/
 plora.override.yml
 .calib_tmp
 .sweep_tmp
 poster/
+thesis/
+figures/
