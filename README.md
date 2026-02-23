@@ -15,13 +15,31 @@ The system implements:
 
 ## Installation
 
-```bash
-# Clone and setup with Poetry (Python 3.13)
-git clone <repo-url> && cd plora
-make setup   # or: poetry install --with dev
+### Option A: Poetry (native)
 
-# Run tests (< 10 min on laptop)
+```bash
+git clone <repo-url> && cd plora
+make setup   # installs Poetry if missing, then all dependencies
 make test
+```
+
+### Option B: Docker (any OS, no local Python required)
+
+Install a Docker runtime (free, one-time):
+
+| OS | Command |
+|----|---------|
+| **Linux** | `curl -fsSL https://get.docker.com \| sh` |
+| **macOS** | `brew install colima docker && colima start` |
+| **Windows** | `wsl --install`, then run the Linux command inside WSL |
+
+Then build and run:
+
+```bash
+make docker-build          # build the image
+make docker-test           # run tests
+make docker-dry-run        # full 19-step dry run
+make docker-run            # interactive shell (results/ and out/ are mounted)
 ```
 
 ## Quick Start
@@ -377,10 +395,30 @@ Guardrails:
 - Abort if placebo beats baseline significantly
 - Abort if inject/remove latency exceeds budget
 
+## HuggingFace Authentication
+
+This project uses `google/gemma-3-1b-it`, a gated model. You must accept the license and authenticate:
+
+1. Go to https://huggingface.co/google/gemma-3-1b-it and click **"Agree and access repository"**
+2. Create an access token at https://huggingface.co/settings/tokens (read access is sufficient)
+3. Log in locally:
+
+```bash
+pip install huggingface_hub
+huggingface-cli login   # paste your token when prompted
+```
+
+For Docker, pass the token as an environment variable:
+
+```bash
+make docker-test HF_TOKEN=hf_xxxxx
+```
+
 ## Environment Variables
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `HF_TOKEN` | HuggingFace access token for gated models | (required) |
 | `PLORA_BASE_MODEL` | HF model for training/metrics | `google/gemma-3-1b-it` |
 | `PLORA_LATENCY_BUDGET_MS` | Latency guardrail (ms) | `250` |
 | `PLORA_SAMPLES` | Global cap on HuggingFace samples | None |
@@ -426,6 +464,15 @@ Guardrails:
 | `make ablation` | Rank/scheme ablation study |
 | `make alt-train-merge` | Alternating train–merge stability |
 | `make value-add-build-lowmem` | Build JSONL (memory-constrained) |
+
+### Docker
+
+| Target | Description |
+|--------|-------------|
+| `make docker-build` | Build the Docker image |
+| `make docker-run` | Interactive shell (mounts results/ and out/) |
+| `make docker-test` | Run pytest inside the container |
+| `make docker-dry-run` | Run 19-step dry run inside the container |
 
 ### Utilities
 

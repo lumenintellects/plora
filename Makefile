@@ -1,23 +1,27 @@
 .PHONY: setup poetry-env test train-legal sign-legal offer fetch value-add-smoke value-add-full swarm-sim \
 	swarm-v2-smoke swarm-v2-eval monolithic-r4 value-add-rank-sweep dump-policy train-all sign-all \
-	dry-run-lite dry-run-reset dry-run-status full-experiment full-experiment-reset full-experiment-status
+	dry-run-lite dry-run-reset dry-run-status full-experiment full-experiment-reset full-experiment-status \
+	docker-build docker-run docker-test docker-dry-run
+
+# Resolve poetry: prefer PATH, fall back to python3 -m poetry (pip --user install)
+POETRY := $(if $(shell command -v poetry 2>/dev/null),poetry,python3 -m poetry)
 
 # Dynamic domains (from current active YAML config via plora.config)
-DOMAINS_CSV := $(shell poetry run python -c 'from plora.config import get; print(",".join(get("domains", [])))')
-DOMAINS := $(shell poetry run python -c 'from plora.config import get; print(" ".join(get("domains", [])))')
+DOMAINS_CSV := $(shell $(POETRY) run python -c 'from plora.config import get; print(",".join(get("domains", [])))' 2>/dev/null)
+DOMAINS := $(shell $(POETRY) run python -c 'from plora.config import get; print(" ".join(get("domains", [])))' 2>/dev/null)
 
 .PHONY: alt-train-merge
 alt-train-merge:
-	poetry run python -m scripts.alternating_train_merge \
+	$(POETRY) run python -m scripts.alternating_train_merge \
 		--domains $(DOMAINS_CSV) \
-		--cycles $$(poetry run python -m plora.config alt_train_merge.cycles) \
-		--samples $$(poetry run python -m plora.config alt_train_merge.samples) \
-		--rank $$(poetry run python -m plora.config alt_train_merge.rank) \
+		--cycles $$($(POETRY) run python -m plora.config alt_train_merge.cycles) \
+		--samples $$($(POETRY) run python -m plora.config alt_train_merge.samples) \
+		--rank $$($(POETRY) run python -m plora.config alt_train_merge.rank) \
 		--out results/alt_train_merge
 
 .PHONY: ablation
 ablation:
-	poetry run python -m scripts.ablation_runner --domains $(DOMAINS_CSV) --ranks $$(poetry run python -m plora.config value_add.ranks | tr -d '[] ') --schemes $$(poetry run python -m plora.config value_add.schemes | tr -d "[]'\" ") --samples $$(poetry run python -m plora.config samples) --epochs 1 --out results/ablation.jsonl
+	$(POETRY) run python -m scripts.ablation_runner --domains $(DOMAINS_CSV) --ranks $$($(POETRY) run python -m plora.config value_add.ranks | tr -d '[] ') --schemes $$($(POETRY) run python -m plora.config value_add.schemes | tr -d "[]'\" ") --samples $$($(POETRY) run python -m plora.config samples) --epochs 1 --out results/ablation.jsonl
 
 # ---------------------------------------------------------------------------
 # Environment helper – shortcut to install with Poetry (preferred).
@@ -26,44 +30,48 @@ ablation:
 setup: poetry-env  ## Install dependencies (dev extras) via Poetry
 
 poetry-env:
-	poetry install --with dev
+	@$(POETRY) --version >/dev/null 2>&1 || { \
+		echo "Poetry not found - installing via pip..."; \
+		python3 -m pip install --user poetry; \
+	}
+	$(POETRY) install --with dev
 
 # ---------------------------------------------------------------------------
 # Commands executed inside Poetry's virtualenv
 # ---------------------------------------------------------------------------
 
 test:
-	poetry run pytest -q
+	$(POETRY) run pytest -q
 
 train-legal:
-	poetry run python -m scripts.train_task --domain legal --epochs 1 --output out/legal
+	$(POETRY) run python -m scripts.train_task --domain legal --epochs 1 --output out/legal
 
 sign-legal:
-	poetry run python -c "import pathlib, plora.signer as s, sys; k=pathlib.Path('keys'); k.mkdir(exist_ok=True); priv=k/'temp_priv.pem'; pub=k/'temp_pub.pem';\
+	$(POETRY) run python -c "import pathlib, plora.signer as s, sys; k=pathlib.Path('keys'); k.mkdir(exist_ok=True); priv=k/'temp_priv.pem'; pub=k/'temp_pub.pem';\
 	  (priv.exists() or s.generate_keypair(priv, pub))" && \
-	poetry run python -m scripts.sign_plasmid --adapter-dir out/legal --private-key keys/temp_priv.pem
+	$(POETRY) run python -m scripts.sign_plasmid --adapter-dir out/legal --private-key keys/temp_priv.pem
 
 offer:
-	poetry run python -m scripts.offer_server --root out &
+	$(POETRY) run python -m scripts.offer_server --root out &
 	@echo "Offer server running"
 
 fetch:
-	poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem
+	$(POETRY) run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem
 
 # Replace static domain list with dynamic config-driven list
 # (already defined above as DOMAINS / DOMAINS_CSV)
 
 train-all:
-	@rank=$$(poetry run python -m plora.config 'value_add.ranks[0]'); \
-	samples=$$(poetry run python -m plora.config samples); \
-	scheme=$$(poetry run python -m plora.config 'value_add.schemes[0]' | tr -d '"'); \
+	@rank=$$($(POETRY) run python -m plora.config 'value_add.ranks[0]'); \
+	samples=$$($(POETRY) run python -m plora.config samples); \
+	scheme=$$($(POETRY) run python -m plora.config 'value_add.schemes[0]' | tr -d '"'); \
 	for d in $(DOMAINS); do \
-		poetry run python -m scripts.train_task \
+		$(POETRY) run python -m scripts.train_task \
 		  --domain $$d --epochs 1 --samples $$samples --rank $$rank --scheme $$scheme --output out/$$d ; \
 	done
 
 sign-all:
-	@poetry run python -c "import pathlib,plora.signer as s; \
+	@$(POETRY) run python -c "import pathlib,plora.signer as s; \
 	    k=pathlib.Path('keys'); k.mkdir(exist_ok=True); \
 	    p=k/'temp_priv.pem'; q=k/'temp_pub.pem'; \
 	    (p.exists() or s.generate_keypair(p,q))"
@@ -73,12 +81,12 @@ sign-all:
 	    fi; \
 	done; [ $$missing -eq 0 ] || exit 1
 	@for d in $(DOMAINS); do \
-		poetry run python -m scripts.sign_plasmid \
+		$(POETRY) run python -m scripts.sign_plasmid \
 		    --adapter-dir out/$$d --private-key keys/temp_priv.pem ; \
 	done
 
 offer-all: sign-all
-	poetry run python -m scripts.offer_server --root out
+	$(POETRY) run python -m scripts.offer_server --root out
 
 # ---------------------------------------------------------------------------
 # Fetch all plasmids from running server into ./fetched/<domain>
@@ -86,7 +94,7 @@ offer-all: sign-all
 
 fetch-all:
 	@for d in $(DOMAINS); do \
-		poetry run python -m scripts.fetch_client \
+		$(POETRY) run python -m scripts.fetch_client \
 		    --domain $$d \
 		    --dest fetched/$$d \
 		    --public-key keys/temp_pub.pem ; \
@@ -94,7 +102,7 @@ fetch-all:
 
 # Value-add experiment (small smoke run)
 value-add-smoke:
-	poetry run python -m scripts.run_lora_value_add \
+	$(POETRY) run python -m scripts.run_lora_value_add \
 	  --domains "$(DOMAINS_CSV)" \
 	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
 	  --ignore-latency-guard \
@@ -102,9 +110,9 @@ value-add-smoke:
 
 # Full value-add experiment (longer, deeper grid)
 value-add-full:
-	poetry run python -m scripts.run_lora_value_add \
+	$(POETRY) run python -m scripts.run_lora_value_add \
 	  --domains "$(DOMAINS_CSV)" \
-	  --seeds $$(poetry run python -m plora.config value_add.seeds) \
+	  --seeds $$($(POETRY) run python -m plora.config value_add.seeds) \
 	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
 	  --ignore-latency-guard \
 	  --no-resume
@@ -112,25 +120,25 @@ value-add-full:
 # Build value_add.jsonl from artifacts (full evaluation)
 value-add-build-full:
 	PLORA_FORCE_CPU=$(CPU) \
-	poetry run python -m scripts.build_value_add_jsonl \
+	$(POETRY) run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
 	  --domains "$(DOMAINS_CSV)" \
-	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
-	  --base-model $(shell poetry run python -m plora.config base_model) \
-	  --seeds $(shell poetry run python -m plora.config value_add.seeds | tr -d '[] ') \
+	  --dev-size $(shell $(POETRY) run python -m plora.config value_add.dev_size) \
+	  --base-model $(shell $(POETRY) run python -m plora.config base_model) \
+	  --seeds $(shell $(POETRY) run python -m plora.config value_add.seeds | tr -d '[] ') \
 	  --overwrite
 
 # Build with very low resource usage (skip placebos & cross, smaller dev and length)
 value-add-build-lowmem:
-	poetry run python -m scripts.build_value_add_jsonl \
+	$(POETRY) run python -m scripts.build_value_add_jsonl \
 	  --artifacts-dir results/value_add \
 	  --output results/value_add/value_add.jsonl \
 	  --domains "$(DOMAINS_CSV)" \
-	  --dev-size $(shell poetry run python -m plora.config value_add.dev_size) \
+	  --dev-size $(shell $(POETRY) run python -m plora.config value_add.dev_size) \
 	  --max-length 256 \
-	  --base-model $(shell poetry run python -m plora.config base_model) \
-	  --seeds $(shell poetry run python -m plora.config value_add.seeds | tr -d '[] ') \
+	  --base-model $(shell $(POETRY) run python -m plora.config base_model) \
+	  --seeds $(shell $(POETRY) run python -m plora.config value_add.seeds | tr -d '[] ') \
 	  --skip-placebos \
 	  --skip-cross \
 	  --overwrite
@@ -140,47 +148,47 @@ value-add-build-lowmem:
 # ---------------------------------------------------------------------------
 
 swarm-sim:
-	poetry run python -m swarm.sim_entry --topology line --agents 5 --mode sim --max_rounds 50 --seed 42
+	$(POETRY) run python -m swarm.sim_entry --topology line --agents 5 --mode sim --max_rounds 50 --seed 42
 
 # Swarm Sim v2 (push–pull) – security on, short dry-run
 swarm-v2-smoke:
-	poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$(poetry run python -m plora.config graph.p) --security on --trojan_rate $$(poetry run python -m plora.config swarm.trojan_rate) --history-alias results/history.json --adapters_dir out
+	$(POETRY) run python -m swarm.sim_v2_entry --agents 6 --rounds 5 --graph_p $$($(POETRY) run python -m plora.config graph.p) --security on --trojan_rate $$($(POETRY) run python -m plora.config swarm.trojan_rate) --history-alias results/history.json --adapters_dir out
 
 # Summarise v2 (and v1 graph) reports into a compact JSON
 swarm-v2-eval:
-	poetry run python -m scripts.evaluate_v2 --reports results --out results/summary_v2.json
+	$(POETRY) run python -m scripts.evaluate_v2 --reports results --out results/summary_v2.json
 
 .PHONY: prepare-data
 prepare-data:
-	poetry run python -m scripts.preload_datasets
+	$(POETRY) run python -m scripts.preload_datasets
 
 .PHONY: figures
 figures:
-	poetry run python -m scripts.plot_figures --summary results/summary_v2.json --out results/figures
+	$(POETRY) run python -m scripts.plot_figures --summary results/summary_v2.json --out results/figures
 
 .PHONY: validate-bounds
 validate-bounds:
-	poetry run python -m scripts.validate_bounds --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --seed 42 --out results/bounds_validation.json
+	$(POETRY) run python -m scripts.validate_bounds --ns 20,40,80,160 --p $$($(POETRY) run python -m plora.config graph.p) --seed 42 --out results/bounds_validation.json
 
 .PHONY: calibrate-c calibrate-c-er calibrate-c-ws calibrate-c-ba
 calibrate-c: calibrate-c-er calibrate-c-ws calibrate-c-ba
 
 calibrate-c-er:
-	poetry run python -m scripts.calibrate_c --topology er --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_er.json
+	$(POETRY) run python -m scripts.calibrate_c --topology er --ns 20,40,80,160 --p $$($(POETRY) run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_er.json
 
 calibrate-c-ws:
-	poetry run python -m scripts.calibrate_c --topology ws --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_ws.json
+	$(POETRY) run python -m scripts.calibrate_c --topology ws --ns 20,40,80,160 --p $$($(POETRY) run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_ws.json
 
 calibrate-c-ba:
-	poetry run python -m scripts.calibrate_c --topology ba --ns 20,40,80,160 --p $$(poetry run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_ba.json
+	$(POETRY) run python -m scripts.calibrate_c --topology ba --ns 20,40,80,160 --p $$($(POETRY) run python -m plora.config graph.p) --rounds 20 --seed 42 --out results/c_calib_ba.json
 
 .PHONY: mine-calib
 mine-calib:
-	poetry run python -m scripts.mine_calibrate --rho 0.8 --n 2000 --out results/mine_calib.json
+	$(POETRY) run python -m scripts.mine_calibrate --rho 0.8 --n 2000 --out results/mine_calib.json
 
 .PHONY: audit-verify
 audit-verify:
-	poetry run python -m scripts.audit_verify --audit results/audit/gate_audit.jsonl
+	$(POETRY) run python -m scripts.audit_verify --audit results/audit/gate_audit.jsonl
 
 .PHONY: consensus-smoke
 consensus-smoke:
@@ -188,36 +196,36 @@ consensus-smoke:
 
 .PHONY: probes-calib
 probes-calib:
-	poetry run python -m scripts.probes_calibrate --target_fp $$(poetry run python -m plora.config probes.target_fp) --target_fn $$(poetry run python -m plora.config probes.target_fn) --out results/probes_calib.json
+	$(POETRY) run python -m scripts.probes_calibrate --target_fp $$($(POETRY) run python -m plora.config probes.target_fp) --target_fn $$($(POETRY) run python -m plora.config probes.target_fn) --out results/probes_calib.json
 
 .PHONY: net-it
 net-it:
-	poetry run python -m scripts.net_it_metrics --history results/history.json --out results/net_it_metrics.json
+	$(POETRY) run python -m scripts.net_it_metrics --history results/history.json --out results/net_it_metrics.json
 
 .PHONY: math-export
 math-export:
 	@echo "Exporting math notebook to PDF (requires nbconvert/pandoc)" && \
-	poetry run jupyter nbconvert --to pdf notebooks/math_foundations.ipynb || echo "Install nbconvert/pandoc to enable export."
+	$(POETRY) run jupyter nbconvert --to pdf notebooks/math_foundations.ipynb || echo "Install nbconvert/pandoc to enable export."
 
 .PHONY: thesis-sweep thesis-sweep-full
 thesis-sweep:
-	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds $$(poetry run python -m plora.config value_add.seeds | tr -d '[] ') --p $$(poetry run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	$(POETRY) run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds $$($(POETRY) run python -m plora.config value_add.seeds | tr -d '[] ') --p $$($(POETRY) run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
 
 # Full thesis sweep: 3 topologies × 4 sizes × 3 seeds × 2 trojan_rates = 72 experiments
 # Use this for final analysis; includes per-round coverage, entropy, and accepted counts
 # 6 rounds is sufficient: max t_obs=2, max t_pred=4, MI→0 by round 4
 thesis-sweep-full:
-	poetry run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42,43 --p $$(poetry run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
+	$(POETRY) run python -m scripts.sweep.main --topos er,ws,ba --ns 20,40,80,160 --seeds 41,42,43 --p $$($(POETRY) run python -m plora.config graph.p) --rounds 6 --trojan_rates 0.0,0.3 --out results/thesis_sweep.jsonl
 	@echo "Generated 72 experiments (3 topos × 4 sizes × 3 seeds × 2 trojan_rates)"
 	@wc -l results/thesis_sweep.jsonl
 
 # Monolithic baseline – tiny training loop over 3 domains at rank 4
 monolithic-r4:
-	poetry run python -m scripts.monolithic_train --domains "$(DOMAINS_CSV)" --epochs 1 --samples $$(poetry run python -m plora.config samples) --rank 4 --output out/monolithic_r4
+	$(POETRY) run python -m scripts.monolithic_train --domains "$(DOMAINS_CSV)" --epochs 1 --samples $$($(POETRY) run python -m plora.config samples) --rank 4 --output out/monolithic_r4
 
 # Rank sweep runner – writes rank-scoped outputs under results/value_add
 value-add-rank-sweep:
-	poetry run python -m scripts.run_lora_value_add \
+	$(POETRY) run python -m scripts.run_lora_value_add \
 	  --domains "$(DOMAINS_CSV)" \
 	  --latency-budget-ms $${LAT_BUDGET_MS:-250} \
 	  --ignore-latency-guard || true
@@ -226,10 +234,10 @@ value-add-rank-sweep:
 # ---------------------------------------------------------------------------
 .PHONY: config-use-full config-use-dry
 config-use-full:
-	poetry run python -m plora.config use config/plora.full.yml
+	$(POETRY) run python -m plora.config use config/plora.full.yml
 
 config-use-dry:
-	poetry run python -m plora.config use config/plora.dry.yml
+	$(POETRY) run python -m plora.config use config/plora.dry.yml
 
 # ---------------------------------------------------------------------------
 # Dry-run lite (19 steps) - same structure as full-experiment but with dry config
@@ -283,7 +291,7 @@ dry-run-lite: config-use-dry
 		fi; \
 	}; \
 	{ \
-		run_step 1 "Running unit tests" poetry run pytest -q && \
+		run_step 1 "Running unit tests" $(POETRY) run pytest -q && \
 		run_step 2 "Preloading datasets" $(MAKE) prepare-data && \
 		run_step 3 "Calibrating spectral constant C (all topologies)" $(MAKE) calibrate-c && \
 		run_step 4 "Validating spectral/Cheeger bounds" $(MAKE) validate-bounds && \
@@ -298,15 +306,15 @@ dry-run-lite: config-use-dry
 		run_step 13 "Ablations (rank/scheme)" $(MAKE) ablation && \
 		run_step 14 "Alternating train-merge stability" $(MAKE) alt-train-merge && \
 		run_step 15 "Value-add JSONL verification" sh -c 'test -f results/value_add/value_add.jsonl && echo "  ✓ value_add.jsonl has $$(wc -l < results/value_add/value_add.jsonl | tr -d " ") records"' && \
-		run_step 16 "Consensus-enabled v2 smoke" poetry run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 9 --security on --trojan_rate $$(poetry run python -m plora.config swarm.trojan_rate) --consensus on --quorum $$(poetry run python -m plora.config swarm.quorum) --report_dir results --adapters_dir out && \
-		run_step 17 "gRPC offer/fetch demo" sh -c '( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true )' && \
+		run_step 16 "Consensus-enabled v2 smoke" $(POETRY) run python -m swarm.sim_v2_entry --agents 4 --rounds 2 --graph er --graph_p $$($(POETRY) run python -m plora.config graph.p) --seed 9 --security on --trojan_rate $$($(POETRY) run python -m plora.config swarm.trojan_rate) --consensus on --quorum $$($(POETRY) run python -m plora.config swarm.quorum) --report_dir results --adapters_dir out && \
+		run_step 17 "gRPC offer/fetch demo" sh -c '( $(POETRY) run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; $(POETRY) run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true )' && \
 		( \
 			done=$$(get_done); \
 			if [ $$done -ge 18 ]; then \
 				echo "[18/$(TOTAL_STEPS)] Dump effective security policy - SKIPPED (already done)"; \
 			else \
 				echo "[18/$(TOTAL_STEPS)] Dump effective security policy"; \
-				RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+				RANKS_STR=$$($(POETRY) run python -m plora.config allowed_ranks | tr -d '[] '); \
 				$(MAKE) dump-policy RANKS="$$RANKS_STR" && mark_done 18; \
 			fi \
 		) && \
@@ -378,7 +386,7 @@ full-experiment: config-use-full
 		fi; \
 	}; \
 	{ \
-		run_step 1 "Running unit tests" poetry run pytest -q && \
+		run_step 1 "Running unit tests" $(POETRY) run pytest -q && \
 		run_step 2 "Preloading datasets" $(MAKE) prepare-data && \
 		run_step 3 "Calibrating spectral constant C (all topologies)" $(MAKE) calibrate-c && \
 		run_step 4 "Validating spectral/Cheeger bounds" $(MAKE) validate-bounds && \
@@ -393,15 +401,15 @@ full-experiment: config-use-full
 		run_step 13 "Ablations (rank/scheme)" $(MAKE) ablation && \
 		run_step 14 "Alternating train-merge stability" $(MAKE) alt-train-merge && \
 		run_step 15 "Value-add JSONL verification" sh -c 'test -f results/value_add/value_add.jsonl && echo "  ✓ value_add.jsonl has $$(wc -l < results/value_add/value_add.jsonl | tr -d " ") records"' && \
-		run_step 16 "Consensus-enabled v2 smoke" poetry run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$(poetry run python -m plora.config graph.p) --seed 11 --security on --trojan_rate $$(poetry run python -m plora.config swarm.trojan_rate) --consensus on --quorum $$(poetry run python -m plora.config swarm.quorum) --report_dir results --adapters_dir out && \
-		run_step 17 "gRPC offer/fetch demo" sh -c '( poetry run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; poetry run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true )' && \
+		run_step 16 "Consensus-enabled v2 smoke" $(POETRY) run python -m swarm.sim_v2_entry --agents 6 --rounds 3 --graph er --graph_p $$($(POETRY) run python -m plora.config graph.p) --seed 11 --security on --trojan_rate $$($(POETRY) run python -m plora.config swarm.trojan_rate) --consensus on --quorum $$($(POETRY) run python -m plora.config swarm.quorum) --report_dir results --adapters_dir out && \
+		run_step 17 "gRPC offer/fetch demo" sh -c '( $(POETRY) run python -m scripts.offer_server --root out & OFFER_PID=$$!; sleep 2; $(POETRY) run python -m scripts.fetch_client --domain legal --dest fetched --public-key keys/temp_pub.pem || true; kill $$OFFER_PID 2>/dev/null || true )' && \
 		( \
 			done=$$(get_done); \
 			if [ $$done -ge 18 ]; then \
 				echo "[18/$(TOTAL_STEPS)] Dump effective security policy - SKIPPED (already done)"; \
 			else \
 				echo "[18/$(TOTAL_STEPS)] Dump effective security policy"; \
-				RANKS_STR=$$(poetry run python -m plora.config allowed_ranks | tr -d '[] '); \
+				RANKS_STR=$$($(POETRY) run python -m plora.config allowed_ranks | tr -d '[] '); \
 				$(MAKE) dump-policy RANKS="$$RANKS_STR" && mark_done 18; \
 			fi \
 		) && \
@@ -427,8 +435,27 @@ RANKS ?=
 SIG ?= off
 
 dump-policy:
-	poetry run python -m scripts.dump_policy \
+	$(POETRY) run python -m scripts.dump_policy \
 		$(if $(POLICY),--policy_file $(POLICY)) \
 		$(if $(TARGETS),--allowed_targets_file $(TARGETS)) \
 		$(if $(RANKS),--allowed_ranks $(RANKS)) \
 		--signatures $(SIG)
+
+# ---------------------------------------------------------------------------
+# Docker
+# Pass HF_TOKEN for gated models: make docker-test HF_TOKEN=hf_xxxxx
+# ---------------------------------------------------------------------------
+DOCKER_IMG := plora-swarm
+DOCKER_HF := $(if $(HF_TOKEN),-e HF_TOKEN=$(HF_TOKEN))
+
+docker-build:
+	docker build -t $(DOCKER_IMG) .
+
+docker-run:
+	docker run --rm -it $(DOCKER_HF) -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out $(DOCKER_IMG)
+
+docker-test:
+	docker run --rm $(DOCKER_HF) $(DOCKER_IMG) make test
+
+docker-dry-run:
+	docker run --rm $(DOCKER_HF) -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out $(DOCKER_IMG) make dry-run-lite
