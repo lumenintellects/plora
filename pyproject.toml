@@ -27,6 +27,7 @@ scipy = "*"
 scikit-learn = "*"
 pandas = "*"
 python-pptx = "^1.0.2"
+pandas-stubs = "~=2.3.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "8.2.0"
@@ -41,4 +42,3 @@ markers = [
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
