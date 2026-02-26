@@ -30,16 +30,39 @@ Install a Docker runtime (free, one-time):
 | OS | Command |
 |----|---------|
 | **Linux** | `curl -fsSL https://get.docker.com \| sh` |
-| **macOS** | `brew install colima docker && colima start` |
+| **macOS** | `brew install colima docker && colima start --memory 10 --cpu 4 --save-config` |
 | **Windows** | `wsl --install`, then run the Linux command inside WSL |
 
-Then build and run:
+> **Memory:** Colima defaults to 2 GB RAM which is far too low.
+> Give the VM at least **8 GB** (more is better):
+>
+> ```bash
+> colima stop
+> colima start --memory 10 --cpu 4 --save-config   # persists for future starts
+> ```
+>
+> If you use Docker Desktop instead, go to **Settings > Resources** and set memory
+> to at least 8 GB.
+>
+> All `docker run` targets pass `--memory-swap=-1` so the container can spill to
+> disk swap instead of being OOM-killed (exit 137). This makes runs slower under
+> memory pressure but they will not crash.
+
+Then build and run (pass `HF_TOKEN` for any target that loads the gated model):
 
 ```bash
-make docker-build          # build the image
-make docker-test           # run tests
-make docker-dry-run        # full 19-step dry run
-make docker-run            # interactive shell (results/ and out/ are mounted)
+make docker-build                               # build the image
+make docker-test    HF_TOKEN=hf_xxxxx           # run tests
+make docker-dry-run HF_TOKEN=hf_xxxxx           # full 19-step dry run
+make docker-run     HF_TOKEN=hf_xxxxx           # interactive shell (mounts results/ and out/)
+```
+
+The Docker targets automatically mount `~/.cache/huggingface` from the host so
+model weights are downloaded once and reused across container runs. To use a
+different cache directory:
+
+```bash
+make docker-dry-run HF_TOKEN=hf_xxxxx HF_CACHE=/path/to/cache
 ```
 
 ## Quick Start
@@ -521,7 +544,9 @@ Key test coverage:
 
 | Issue | Solution |
 |-------|----------|
+| Docker `Killed` / exit 137 | Container OOM — increase Colima memory (`colima stop && colima start --memory 10 --cpu 4 --save-config`). The Makefile already passes `--memory-swap=-1` to allow disk swap as overflow |
 | Value-add OOM | Use `make value-add-build-lowmem` with `--skip-placebos --skip-cross` |
+| HF 401/403 during model download | Ensure `HF_TOKEN` is set and you accepted the model license at https://huggingface.co/google/gemma-3-1b-it |
 | gRPC signature failure | Ensure matching keypair between offer server and fetch client |
 | Slow on CPU | Use `config/plora.dry.yml` and set `PLORA_SAMPLES=32` |
 | MPS memory errors | Set `PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0` |
