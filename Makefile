@@ -444,18 +444,27 @@ dump-policy:
 # ---------------------------------------------------------------------------
 # Docker
 # Pass HF_TOKEN for gated models: make docker-test HF_TOKEN=hf_xxxxx
+#
+# Memory: --memory-swap=-1 allows unlimited swap so the OOM killer never
+# fires; the run just slows down if RAM is tight.  The host-side HF cache
+# is mounted so model weights are downloaded once and reused across runs.
+# Override HF_CACHE to point elsewhere:
+#   make docker-dry-run HF_TOKEN=hf_xxx HF_CACHE=/tmp/hf
 # ---------------------------------------------------------------------------
-DOCKER_IMG := plora-swarm
-DOCKER_HF := $(if $(HF_TOKEN),-e HF_TOKEN=$(HF_TOKEN))
+DOCKER_IMG  := plora-swarm
+DOCKER_HF   := $(if $(HF_TOKEN),-e HF_TOKEN=$(HF_TOKEN))
+HF_CACHE    ?= $(HOME)/.cache/huggingface
+DOCKER_MEM  := --memory-swap=-1
+DOCKER_VOL  := -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out -v $(HF_CACHE):/app/.hf_cache
 
 docker-build:
 	docker build -t $(DOCKER_IMG) .
 
 docker-run:
-	docker run --rm -it $(DOCKER_HF) -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out $(DOCKER_IMG)
+	docker run --rm -it $(DOCKER_MEM) $(DOCKER_HF) $(DOCKER_VOL) $(DOCKER_IMG)
 
 docker-test:
-	docker run --rm $(DOCKER_HF) $(DOCKER_IMG) make test
+	docker run --rm $(DOCKER_MEM) $(DOCKER_HF) -v $(HF_CACHE):/app/.hf_cache $(DOCKER_IMG) make test
 
 docker-dry-run:
-	docker run --rm $(DOCKER_HF) -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out $(DOCKER_IMG) make dry-run-lite
+	docker run --rm $(DOCKER_MEM) $(DOCKER_HF) $(DOCKER_VOL) $(DOCKER_IMG) make dry-run-lite
