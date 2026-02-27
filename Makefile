@@ -445,26 +445,75 @@ dump-policy:
 # Docker
 # Pass HF_TOKEN for gated models: make docker-test HF_TOKEN=hf_xxxxx
 #
-# Memory: --memory-swap=-1 allows unlimited swap so the OOM killer never
-# fires; the run just slows down if RAM is tight.  The host-side HF cache
-# is mounted so model weights are downloaded once and reused across runs.
+# Memory: training loads a 1B-param model twice (train + baseline PPL) which
+# peaks at ~10-12 GB RSS.
+#
+#   macOS / Colima : VM has NO swap → OOM kill (exit 137).
+#                    Run `make docker-setup-swap` once after each `colima start`.
+#   Linux (native) : host swap is used automatically; ensure ≥8 GB swap
+#                    (`free -h`; add with `sudo fallocate …` if needed).
+#   Windows / WSL2 : set memory+swap in %USERPROFILE%\.wslconfig:
+#                      [wsl2]
+#                      memory=10GB
+#                      swap=8GB
+#
+# The host-side HF cache is mounted so model weights are downloaded once.
 # Override HF_CACHE to point elsewhere:
 #   make docker-dry-run HF_TOKEN=hf_xxx HF_CACHE=/tmp/hf
 # ---------------------------------------------------------------------------
 DOCKER_IMG  := plora-swarm
 DOCKER_HF   := $(if $(HF_TOKEN),-e HF_TOKEN=$(HF_TOKEN))
 HF_CACHE    ?= $(HOME)/.cache/huggingface
-DOCKER_MEM  := --memory-swap=-1
 DOCKER_VOL  := -v $$(pwd)/results:/app/results -v $$(pwd)/out:/app/out -v $(HF_CACHE):/app/.hf_cache
+SWAP_SIZE   ?= 16384
+# Force offline mode after initial download so PEFT/transformers never retry
+# network requests (DNS failures cause memory-wasting retry loops).
+# MALLOC settings force glibc to return freed memory to the OS immediately.
+DOCKER_ENV  := -e HF_HUB_OFFLINE=1 \
+               -e TRANSFORMERS_OFFLINE=1 \
+               -e MALLOC_TRIM_THRESHOLD_=0 \
+               -e MALLOC_ARENA_MAX=2
+
+# macOS only: create disk-backed swap inside the Colima VM.
+# Safe to skip on Linux (native swap) and WSL2 (configured via .wslconfig).
+# Replaces any existing swapfile so you can resize with SWAP_SIZE=<MB>.
+.PHONY: docker-setup-swap
+docker-setup-swap:
+	@echo "Setting up $(SWAP_SIZE) MB swap inside Colima VM..."
+	@colima ssh -- sh -c '\
+		if swapon --show 2>/dev/null | grep -q /swapfile; then \
+			cur=$$(stat -c%s /swapfile 2>/dev/null || echo 0); \
+			want=$$(($(SWAP_SIZE) * 1048576)); \
+			if [ "$$cur" -eq "$$want" ]; then \
+				echo "Swap already active ($(SWAP_SIZE) MB):"; swapon --show; exit 0; \
+			fi; \
+			echo "Resizing swap from $$((cur/1048576)) MB to $(SWAP_SIZE) MB..."; \
+			sudo swapoff /swapfile; \
+		fi; \
+		sudo dd if=/dev/zero of=/swapfile bs=1M count=$(SWAP_SIZE) status=progress && \
+		sudo chmod 600 /swapfile && \
+		sudo mkswap /swapfile && \
+		sudo swapon /swapfile && \
+		echo "$(SWAP_SIZE) MB swap enabled"'
 
 docker-build:
 	docker build -t $(DOCKER_IMG) .
 
+# Pre-download the base model into the mounted HF cache (online, one-time).
+# Subsequent docker-dry-run / docker-run use TRANSFORMERS_OFFLINE=1 so no network needed.
+.PHONY: docker-prefetch
+docker-prefetch:
+	docker run --rm $(DOCKER_HF) -v $(HF_CACHE):/app/.hf_cache $(DOCKER_IMG) \
+		python -c "from transformers import AutoModelForCausalLM,AutoTokenizer; \
+		AutoTokenizer.from_pretrained('google/gemma-3-1b-it'); \
+		AutoModelForCausalLM.from_pretrained('google/gemma-3-1b-it'); \
+		print('Model cached')"
+
 docker-run:
-	docker run --rm -it $(DOCKER_MEM) $(DOCKER_HF) $(DOCKER_VOL) $(DOCKER_IMG)
+	docker run --rm -it $(DOCKER_HF) $(DOCKER_ENV) $(DOCKER_VOL) $(DOCKER_IMG)
 
 docker-test:
-	docker run --rm $(DOCKER_MEM) $(DOCKER_HF) -v $(HF_CACHE):/app/.hf_cache $(DOCKER_IMG) make test
+	docker run --rm $(DOCKER_HF) $(DOCKER_ENV) -v $(HF_CACHE):/app/.hf_cache $(DOCKER_IMG) make test
 
 docker-dry-run:
-	docker run --rm $(DOCKER_MEM) $(DOCKER_HF) $(DOCKER_VOL) $(DOCKER_IMG) make dry-run-lite
+	docker run --rm $(DOCKER_HF) $(DOCKER_ENV) $(DOCKER_VOL) $(DOCKER_IMG) make dry-run-lite

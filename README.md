@@ -30,36 +30,35 @@ Install a Docker runtime (free, one-time):
 | OS | Command |
 |----|---------|
 | **Linux** | `curl -fsSL https://get.docker.com \| sh` |
-| **macOS** | `brew install colima docker && colima start --memory 10 --cpu 4 --save-config` |
+| **macOS** | `brew install colima docker && colima start --vm-type vz --memory 8 --cpu 4 --save-config` |
 | **Windows** | `wsl --install`, then run the Linux command inside WSL |
 
-> **Memory:** Colima defaults to 2 GB RAM which is far too low.
-> Give the VM at least **8 GB** (more is better):
+> **Memory:** Training peaks at ~10-12 GB RSS (the model is loaded twice for
+> perplexity measurement). Without enough RAM + swap the process is OOM-killed
+> (exit 137). Platform-specific setup:
 >
-> ```bash
-> colima stop
-> colima start --memory 10 --cpu 4 --save-config   # persists for future starts
-> ```
->
-> If you use Docker Desktop instead, go to **Settings > Resources** and set memory
-> to at least 8 GB.
->
-> All `docker run` targets pass `--memory-swap=-1` so the container can spill to
-> disk swap instead of being OOM-killed (exit 137). This makes runs slower under
-> memory pressure but they will not crash.
+> | Platform | What to do |
+> |----------|------------|
+> | **macOS / Colima** | `colima start --vm-type vz --memory 8 --cpu 4 --save-config`, then `make docker-setup-swap` (adds 8 GB swap inside the VM; re-run after each `colima start`) |
+> | **Docker Desktop** | Settings > Resources > set memory to at least 8 GB |
+> | **Linux (native)** | Ensure the host has ≥ 8 GB swap (`free -h`). Most distros already do |
+> | **Windows / WSL2** | Create `%USERPROFILE%\.wslconfig` with `[wsl2]`, `memory=10GB`, `swap=8GB`, then `wsl --shutdown` and reopen |
 
-Then build and run (pass `HF_TOKEN` for any target that loads the gated model):
+Then build and run:
 
 ```bash
 make docker-build                               # build the image
-make docker-test    HF_TOKEN=hf_xxxxx           # run tests
-make docker-dry-run HF_TOKEN=hf_xxxxx           # full 19-step dry run
-make docker-run     HF_TOKEN=hf_xxxxx           # interactive shell (mounts results/ and out/)
+make docker-setup-swap                          # macOS/Colima only: add 16 GB swap (once per colima start)
+make docker-prefetch HF_TOKEN=hf_xxxxx          # download the base model into host cache (once)
+make docker-dry-run  HF_TOKEN=hf_xxxxx          # full 19-step dry run (runs offline)
+make docker-run      HF_TOKEN=hf_xxxxx          # interactive shell (mounts results/ and out/)
 ```
 
-The Docker targets automatically mount `~/.cache/huggingface` from the host so
-model weights are downloaded once and reused across container runs. To use a
-different cache directory:
+All `docker run` targets use **offline mode** (`TRANSFORMERS_OFFLINE=1`,
+`HF_HUB_OFFLINE=1`) so the container never makes network requests after the
+initial `docker-prefetch`. This prevents DNS-retry memory leaks inside the VM.
+The host-side HF cache (`~/.cache/huggingface`) is mounted automatically. To use
+a different cache directory:
 
 ```bash
 make docker-dry-run HF_TOKEN=hf_xxxxx HF_CACHE=/path/to/cache
@@ -544,7 +543,7 @@ Key test coverage:
 
 | Issue | Solution |
 |-------|----------|
-| Docker `Killed` / exit 137 | Container OOM — increase Colima memory (`colima stop && colima start --memory 10 --cpu 4 --save-config`). The Makefile already passes `--memory-swap=-1` to allow disk swap as overflow |
+| Docker `Killed` / exit 137 | OOM — not enough RAM + swap. **macOS:** `make docker-setup-swap` after each `colima start`. **Linux:** ensure ≥ 8 GB host swap. **WSL2:** set `swap=8GB` in `.wslconfig` |
 | Value-add OOM | Use `make value-add-build-lowmem` with `--skip-placebos --skip-cross` |
 | HF 401/403 during model download | Ensure `HF_TOKEN` is set and you accepted the model license at https://huggingface.co/google/gemma-3-1b-it |
 | gRPC signature failure | Ensure matching keypair between offer server and fetch client |
