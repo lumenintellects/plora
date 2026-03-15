@@ -499,15 +499,24 @@ docker-setup-swap:
 docker-build:
 	docker build -t $(DOCKER_IMG) .
 
-# Pre-download the base model into the mounted HF cache (online, one-time).
-# Subsequent docker-dry-run / docker-run use TRANSFORMERS_OFFLINE=1 so no network needed.
+# Pre-download the offline assets needed by docker-dry-run/docker-test.
 .PHONY: docker-prefetch
 docker-prefetch:
 	docker run --rm $(DOCKER_HF) -v $(HF_CACHE):/app/.hf_cache $(DOCKER_IMG) \
-		python -c "from transformers import AutoModelForCausalLM,AutoTokenizer; \
-		AutoTokenizer.from_pretrained('google/gemma-3-1b-it'); \
-		AutoModelForCausalLM.from_pretrained('google/gemma-3-1b-it'); \
-		print('Model cached')"
+		sh -lc "python -c \"from transformers import AutoTokenizer; \
+AutoTokenizer.from_pretrained('google/gemma-3-1b-it'); \
+print('Cached tokenizer: google/gemma-3-1b-it')\" && \
+python -c \"from transformers import AutoModelForCausalLM; \
+AutoModelForCausalLM.from_pretrained('google/gemma-3-1b-it'); \
+print('Cached model: google/gemma-3-1b-it')\" && \
+python -c \"from transformers import AutoTokenizer; \
+AutoTokenizer.from_pretrained('sshleifer/tiny-gpt2'); \
+print('Cached tokenizer: sshleifer/tiny-gpt2')\" && \
+python -c \"from transformers import AutoModelForCausalLM; \
+AutoModelForCausalLM.from_pretrained('sshleifer/tiny-gpt2'); \
+print('Cached model: sshleifer/tiny-gpt2')\" && \
+python -m scripts.preload_datasets --domains arithmetic,legal,medical --splits train,validation && \
+echo 'Dataset cache warm'"
 
 docker-run:
 	docker run --rm -it $(DOCKER_HF) $(DOCKER_ENV) $(DOCKER_VOL) $(DOCKER_IMG)

@@ -49,16 +49,18 @@ Then build and run:
 ```bash
 make docker-build                               # build the image
 make docker-setup-swap                          # macOS/Colima only: add 16 GB swap (once per colima start)
-make docker-prefetch HF_TOKEN=hf_xxxxx          # download the base model into host cache (once)
+make docker-prefetch HF_TOKEN=hf_xxxxx          # warm models + datasets into host cache (once)
 make docker-dry-run  HF_TOKEN=hf_xxxxx          # full 19-step dry run (runs offline)
 make docker-run      HF_TOKEN=hf_xxxxx          # interactive shell (mounts results/ and out/)
 ```
 
 All `docker run` targets use **offline mode** (`TRANSFORMERS_OFFLINE=1`,
 `HF_HUB_OFFLINE=1`) so the container never makes network requests after the
-initial `docker-prefetch`. This prevents DNS-retry memory leaks inside the VM.
-The host-side HF cache (`~/.cache/huggingface`) is mounted automatically. To use
-a different cache directory:
+initial `docker-prefetch`. That prefetch step warms the dry-run backbone model,
+the tiny GPT-2 test fixture, and the required train/validation datasets. This
+prevents DNS-retry memory leaks inside the VM. The host-side HF cache
+(`~/.cache/huggingface`) is mounted automatically. To use a different cache
+directory:
 
 ```bash
 make docker-dry-run HF_TOKEN=hf_xxxxx HF_CACHE=/path/to/cache
